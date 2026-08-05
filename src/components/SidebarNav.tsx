@@ -173,8 +173,8 @@ export function SidebarNav({ userEmail }: { userEmail: string }) {
                         </div>
                         {!collapsed && (
                             <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-white truncate">{userEmail}</div>
-                                <div className="text-[0.65rem] text-slate-400">Médica Especialista</div>
+                                <div className="text-sm font-medium text-white truncate">Dra. Viviana Quiróz</div>
+                                <div className="text-[0.65rem] text-slate-400 truncate">{userEmail}</div>
                             </div>
                         )}
                     </div>

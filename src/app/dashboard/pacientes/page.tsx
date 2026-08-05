@@ -9,6 +9,7 @@ export default function PacientesPage() {
     const [pacientes, setPacientes] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [busqueda, setBusqueda] = useState("");
+    const [pacientesConArchivos, setPacientesConArchivos] = useState<Record<string, boolean>>({});
 
     // Modal de confirmación para eliminar
     const [modalEliminarOpen, setModalEliminarOpen] = useState(false);
@@ -22,6 +23,11 @@ export default function PacientesPage() {
     const [archivosPaciente, setArchivosPaciente] = useState<any[]>([]);
     const [subiendoArchivo, setSubiendoArchivo] = useState(false);
     const archivoInputRef = useRef<HTMLInputElement>(null);
+
+    // Modal de Preview
+    const [previewModalOpen, setPreviewModalOpen] = useState(false);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [previewType, setPreviewType] = useState<'pdf' | 'image' | null>(null);
 
     useEffect(() => {
         cargarPacientes();
@@ -37,6 +43,20 @@ export default function PacientesPage() {
                 .order("created_at", { ascending: false });
 
             if (error) throw error;
+
+            if (data) {
+                const conArchivos: Record<string, boolean> = {};
+                await Promise.all(data.map(async (p) => {
+                    const { data: files } = await supabase.storage.from("archivos_pacientes").list(p.id);
+                    if (files && files.filter(f => f.name !== '.emptyFolderPlaceholder').length > 0) {
+                        conArchivos[p.id] = true;
+                    } else {
+                        conArchivos[p.id] = false;
+                    }
+                }));
+                setPacientesConArchivos(conArchivos);
+            }
+
             setPacientes(data || []);
         } catch (err) {
             console.error("Error al cargar pacientes:", err);
@@ -87,9 +107,12 @@ export default function PacientesPage() {
         
         if (!error) {
             toast.success("Archivo subido exitosamente.");
+            setModalArchivosOpen(false); // Cierra el modal de subida
+            setPacientesConArchivos(prev => ({ ...prev, [pacienteSeleccionado.id]: true }));
             cargarArchivos(pacienteSeleccionado.id);
         } else {
-            toast.error("Error al subir el archivo. ¿Creaste el bucket 'archivos_pacientes' y lo hiciste público?");
+            console.error("Upload error:", error);
+            toast.error(`Error al subir el archivo: ${error.message || 'Desconocido'}`);
         }
     };
 
@@ -97,8 +120,41 @@ export default function PacientesPage() {
         const supabase = createClient();
         const { data } = supabase.storage.from("archivos_pacientes").getPublicUrl(`${pacienteSeleccionado.id}/${fileName}`);
         if (data) {
-            window.open(data.publicUrl, "_blank");
+            const ext = fileName.split('.').pop()?.toLowerCase();
+            setPreviewType(ext === 'pdf' ? 'pdf' : 'image');
+            setPreviewUrl(data.publicUrl);
+            setPreviewModalOpen(true);
         }
+    };
+
+    const verUltimoArchivo = async (pacienteId: string) => {
+        const supabase = createClient();
+        const { data, error } = await supabase.storage.from("archivos_pacientes").list(pacienteId, {
+            sortBy: { column: 'created_at', order: 'desc' }
+        });
+        
+        if (error) {
+            console.error("Error al listar archivos:", error);
+            toast.error(`Error de permisos: ${error.message}`);
+            return;
+        }
+
+        if (data && data.length > 0) {
+            const validFiles = data.filter(f => f.name !== '.emptyFolderPlaceholder');
+            if (validFiles.length > 0) {
+                const latestFile = validFiles[0];
+                const { data: urlData } = supabase.storage.from("archivos_pacientes").getPublicUrl(`${pacienteId}/${latestFile.name}`);
+                if (urlData) {
+                    const ext = latestFile.name.split('.').pop()?.toLowerCase();
+                    setPreviewType(ext === 'pdf' ? 'pdf' : 'image');
+                    setPreviewUrl(urlData.publicUrl);
+                    setPreviewModalOpen(true);
+                    return;
+                }
+            }
+        }
+        console.warn("Archivos devueltos por list():", data);
+        toast.error("No se encontró ningún archivo válido para previsualizar.");
     };
 
     const generarLinkTelemedicina = (paciente?: any) => {
@@ -271,10 +327,19 @@ export default function PacientesPage() {
                                                     setModalArchivosOpen(true);
                                                 }}
                                                 className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-lg text-xs font-semibold"
-                                                title="Gestionar Archivos del Paciente"
+                                                title="Subir Nuevo Archivo"
                                             >
-                                                📎 Archivos
+                                                📁 Subir
                                             </button>
+                                            {pacientesConArchivos[p.id] && (
+                                                <button
+                                                    onClick={() => verUltimoArchivo(p.id)}
+                                                    className="p-1.5 text-purple-600 hover:bg-purple-100 rounded-lg text-xs font-semibold animate-scale-in"
+                                                    title="Visualizar Archivo más reciente"
+                                                >
+                                                    👁️ Ver PDF
+                                                </button>
+                                            )}
                                             <Link
                                                 href={`/dashboard/pacientes/${p.id}/editar`}
                                                 className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg text-xs font-semibold inline-block"
@@ -331,14 +396,22 @@ export default function PacientesPage() {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4 text-xs">
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-xs">
                                 <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
                                     <p className="text-slate-400 font-semibold uppercase text-[0.65rem]">Fecha Nacimiento</p>
                                     <p className="font-bold text-slate-800">{pacienteSeleccionado.fecha_nacimiento || "N/R"}</p>
                                 </div>
                                 <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
                                     <p className="text-slate-400 font-semibold uppercase text-[0.65rem]">Género</p>
-                                    <p className="font-bold text-slate-800">{pacienteSeleccionado.genero || "Femenino"}</p>
+                                    <p className="font-bold text-slate-800">{pacienteSeleccionado.genero || "N/R"}</p>
+                                </div>
+                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                                    <p className="text-slate-400 font-semibold uppercase text-[0.65rem]">Estado Civil</p>
+                                    <p className="font-bold text-slate-800">{pacienteSeleccionado.estado_civil || "N/R"}</p>
+                                </div>
+                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                                    <p className="text-slate-400 font-semibold uppercase text-[0.65rem]">Nivel Educativo</p>
+                                    <p className="font-bold text-slate-800">{pacienteSeleccionado.nivel_educativo || "N/R"}</p>
                                 </div>
                                 <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
                                     <p className="text-slate-400 font-semibold uppercase text-[0.65rem]">Teléfono Celular</p>
@@ -361,8 +434,16 @@ export default function PacientesPage() {
                                     <p className="font-bold text-emerald-700">{pacienteSeleccionado.fondo_pension || "N/R"}</p>
                                 </div>
                                 <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
-                                    <p className="text-slate-400 font-semibold uppercase text-[0.65rem]">Residencia</p>
+                                    <p className="text-slate-400 font-semibold uppercase text-[0.65rem]">Residencia / Dirección</p>
                                     <p className="font-bold text-slate-800">{pacienteSeleccionado.lugar_residencia || pacienteSeleccionado.direccion || "N/R"}</p>
+                                </div>
+                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                                    <p className="text-slate-400 font-semibold uppercase text-[0.65rem]">Cargo a desempeñar</p>
+                                    <p className="font-bold text-purple-700">{pacienteSeleccionado.cargo_a_desempenar || "N/R"}</p>
+                                </div>
+                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                                    <p className="text-slate-400 font-semibold uppercase text-[0.65rem]">Tipo de Vinculación</p>
+                                    <p className="font-bold text-slate-800">{pacienteSeleccionado.tipo_vinculacion || "N/R"}</p>
                                 </div>
                             </div>
                         </div>
@@ -474,6 +555,33 @@ export default function PacientesPage() {
                                         </button>
                                     </div>
                                 ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL PREVISUALIZADOR */}
+            {previewModalOpen && previewUrl && (
+                <div className="modal-overlay z-[70]" onClick={() => setPreviewModalOpen(false)}>
+                    <div className="fixed top-2 bottom-2 left-2 right-2 md:top-4 md:bottom-4 md:left-8 md:right-8 max-w-7xl mx-auto bg-white flex flex-col overflow-hidden shadow-2xl rounded-2xl animate-scale-in" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex justify-between items-center p-3 sm:p-4 bg-slate-900 text-white shadow-md z-10 shrink-0">
+                            <h3 className="font-semibold text-sm">Visualizador de Documentos</h3>
+                            <div className="flex gap-4">
+                                <a href={previewUrl} target="_blank" rel="noreferrer" className="text-slate-300 hover:text-white text-sm font-medium flex items-center gap-1">
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                    Abrir externo
+                                </a>
+                                <button onClick={() => setPreviewModalOpen(false)} className="text-slate-300 hover:text-white font-bold px-2">✕ Cerrar</button>
+                            </div>
+                        </div>
+                        <div className="flex-1 bg-slate-100 relative">
+                            {previewType === 'pdf' ? (
+                                <iframe src={`${previewUrl}#toolbar=0&navpanes=0`} className="absolute inset-0 w-full h-full bg-white" title="PDF Preview" />
+                            ) : (
+                                <div className="absolute inset-0 p-4 flex items-center justify-center">
+                                    <img src={previewUrl} alt="Preview" className="max-w-full max-h-full object-contain shadow-lg rounded-xl border border-slate-300" />
+                                </div>
                             )}
                         </div>
                     </div>
