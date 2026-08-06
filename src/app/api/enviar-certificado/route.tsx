@@ -1,13 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { renderToBuffer } from "@react-pdf/renderer";
-import { CertificadoCMALAB } from "@/components/pdf/CertificadoCMALAB";
-import {
-    construirDatosCertificado,
-    generarQR,
-    urlABase64,
-    type DatosCertificadoInput,
-} from "@/lib/certificado-data";
+import { generarPdfCertificado } from "@/lib/generar-certificado-pdf";
+import type { DatosCertificadoInput } from "@/lib/certificado-data";
 import { PUBLIC_APP_URL } from "@/lib/config";
 
 export const runtime = "nodejs";
@@ -103,7 +97,7 @@ export async function POST(req: Request) {
             );
         }
 
-        // 2. Construir datos del certificado (con imágenes en Base64 y QR)
+        // 2. Renderizar el PDF del certificado (helper compartido con el visor público)
         const input: DatosCertificadoInput = {
             evaluacion,
             certificado,
@@ -113,32 +107,12 @@ export async function POST(req: Request) {
             historia: historia || {},
         };
 
-        const datos = construirDatosCertificado(input);
-
-        // Sello y firma de la doctora: usar URLs absolutas de producción para el render server-side
-        datos.img_doctor_seal = `${PUBLIC_APP_URL}/sellodra.png`;
-        datos.img_doctor_sig = `${PUBLIC_APP_URL}/firmadra.png`;
-
-        // Convertir imágenes remotas a Base64 para el render server-side
-        // (las rutas relativas de storage se resuelven con su bucket correspondiente)
-        const [fotoB64, firmaB64, selloB64, firmaDraB64, qrDataUrl] = await Promise.all([
-            urlABase64(paciente.foto_url, "biometria_pacientes"),
-            urlABase64(certificado.firma_paciente_url, "firmas_biometricas"),
-            urlABase64(datos.img_doctor_seal),
-            urlABase64(datos.img_doctor_sig),
-            generarQR(evaluacionId),
-        ]);
-
-        datos.paciente = { ...datos.paciente, foto_url: fotoB64 };
-        datos.firma_paciente_url = firmaB64;
-        datos.img_doctor_seal = selloB64;
-        datos.img_doctor_sig = firmaDraB64;
-        datos.qr_url = qrDataUrl;
-
-        // 3. Renderizar el PDF
         let pdfBuffer: Buffer;
+        let nombreArchivo: string;
         try {
-            pdfBuffer = await renderToBuffer(<CertificadoCMALAB datos={datos} />);
+            const pdf = await generarPdfCertificado(input);
+            pdfBuffer = pdf.buffer;
+            nombreArchivo = pdf.nombreArchivo;
         } catch (pdfErr) {
             console.error("Error renderizando PDF:", pdfErr);
             return NextResponse.json(
@@ -198,7 +172,7 @@ export async function POST(req: Request) {
         </div>
         `;
 
-        const nombreArchivo = `CMALAB_${(paciente.documento_identidad || "paciente").replace(/[^a-zA-Z0-9]/g, "")}.pdf`;
+        const nombreArchivoAdjunto = nombreArchivo || `CMALAB_${(paciente.documento_identidad || "paciente").replace(/[^a-zA-Z0-9]/g, "")}.pdf`;
 
         const resendRes = await fetch("https://api.resend.com/emails", {
             method: "POST",
@@ -210,10 +184,9 @@ export async function POST(req: Request) {
                 from,
                 to: [email],
                 subject: `Su certificado médico ocupacional — ${concepto}`,
-                html,
-                attachments: [
+                html,                    attachments: [
                     {
-                        filename: nombreArchivo,
+                        filename: nombreArchivoAdjunto,
                         content: pdfBuffer.toString("base64"),
                     },
                 ],

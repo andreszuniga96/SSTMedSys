@@ -31,6 +31,7 @@ export default function NuevaEvaluacion() {
     const [firmaExistenteUrl, setFirmaExistenteUrl] = useState<string | null>(null);
     const [diagnosticosCIE10, setDiagnosticosCIE10] = useState<DiagnosticoCIE10[]>([]);
     const [busquedaPaciente, setBusquedaPaciente] = useState("");
+    const [empresas, setEmpresas] = useState<any[]>([]);
     const [autoEnviarCorreo, setAutoEnviarCorreo] = useState(false);
 
     const [formData, setFormData] = useState({
@@ -41,6 +42,7 @@ export default function NuevaEvaluacion() {
         examen_nombre: "Examen medico ocupacional de preingreso",
         hora_realizacion: new Date().toTimeString().slice(0, 5),
         cargo: "",
+        empresa_id: "",
         empresa_nombre: "",
         empresa_nit: "",
         fecha_ingreso: "",
@@ -84,7 +86,11 @@ export default function NuevaEvaluacion() {
 
     useEffect(() => {
         const fetchPacientes = async () => {
-            const { data } = await supabase.from("pacientes").select("*");
+            const [resPacientes, resEmpresas] = await Promise.all([
+                supabase.from("pacientes").select("*"),
+                supabase.from("empresas").select("*").order("nombre"),
+            ]);
+            const data = resPacientes.data;
             if (data) {
                 setPacientes(data);
                 if (typeof window !== "undefined") {
@@ -93,8 +99,19 @@ export default function NuevaEvaluacion() {
                     if (pId && data.some((p) => p.id === pId)) {
                         setFormData((prev) => ({ ...prev, paciente_id: pId }));
                     }
+                    const empId = searchParams.get("empresa_id");
+                    if (empId && resEmpresas.data?.some((e) => e.id === empId)) {
+                        const emp = resEmpresas.data.find((e) => e.id === empId);
+                        setFormData((prev) => ({
+                            ...prev,
+                            empresa_id: empId,
+                            empresa_nombre: emp?.nombre || prev.empresa_nombre,
+                            empresa_nit: emp?.nit || prev.empresa_nit,
+                        }));
+                    }
                 }
             }
+            setEmpresas(resEmpresas.data || []);
         };
         fetchPacientes();
     }, [supabase]);
@@ -218,6 +235,7 @@ export default function NuevaEvaluacion() {
             // 3. Save contexto laboral
             const contextoPromise = supabase.from("contexto_laboral").insert({
                 paciente_id: formData.paciente_id,
+                empresa_id: formData.empresa_id || null,
                 empresa_nombre: formData.empresa_nombre,
                 empresa_nit: formData.empresa_nit,
                 cargo: formData.cargo,
@@ -472,6 +490,27 @@ export default function NuevaEvaluacion() {
                         <div className="section-body grid grid-cols-1 md:grid-cols-3 gap-5">
                             <div className="md:col-span-2">
                                 <label className="label-premium">Empresa Contratante</label>
+                                {empresas.length > 0 && (
+                                    <select
+                                        className="select-premium mb-2"
+                                        value={formData.empresa_id}
+                                        onChange={(e) => {
+                                            const emp = empresas.find((x) => x.id === e.target.value);
+                                            // Si eligen una empresa registrada, rellenar; si limpian, solo soltar el vínculo
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                empresa_id: e.target.value,
+                                                empresa_nombre: emp ? emp.nombre : prev.empresa_nombre,
+                                                empresa_nit: emp ? emp.nit || prev.empresa_nit : prev.empresa_nit,
+                                            }));
+                                        }}
+                                    >
+                                        <option value="">— Empresa registrada (opcional) —</option>
+                                        {empresas.map((e) => (
+                                            <option key={e.id} value={e.id}>{e.nombre} {e.nit ? `· NIT ${e.nit}` : ""}</option>
+                                        ))}
+                                    </select>
+                                )}
                                 <input type="text" className="input-premium" placeholder="Ej. AMPM24 SAS" value={formData.empresa_nombre} onChange={(e) => setFormData({ ...formData, empresa_nombre: e.target.value })} />
                             </div>
                             <div>

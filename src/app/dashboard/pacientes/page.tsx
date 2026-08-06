@@ -88,6 +88,11 @@ export default function PacientesPage() {
     useEffect(() => {
         cargarPacientes();
         cargarSolicitudes();
+        // Prellenar búsqueda si llega con ?q= (ej. desde el historial de empresa)
+        if (typeof window !== "undefined") {
+            const q = new URLSearchParams(window.location.search).get("q");
+            if (q) setBusqueda(q);
+        }
     }, []);
 
     const handleEliminar = async () => {
@@ -284,6 +289,23 @@ export default function PacientesPage() {
                 .single();
 
             if (error) throw error;
+
+            // Vincular contexto laboral con la empresa registrada (si existe)
+            if (solicitud.empresa_nombre) {
+                const { data: empresaMatch } = await supabase
+                    .from("empresas")
+                    .select("id")
+                    .ilike("nombre", solicitud.empresa_nombre)
+                    .limit(1);
+                const empresaId = empresaMatch?.[0]?.id || null;
+                await supabase.from("contexto_laboral").insert({
+                    paciente_id: nuevoPaciente.id,
+                    empresa_id: empresaId,
+                    empresa_nombre: solicitud.empresa_nombre,
+                    cargo: solicitud.cargo,
+                    lugar_realizacion: solicitud.lugar_residencia || "Telemedicina",
+                });
+            }
 
             // Marcar solicitud como procesada
             const { error: errSolicitud } = await supabase
