@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import QRCode from "qrcode";
 import { CertificadoCMALAB } from "./CertificadoCMALAB";
+import { PUBLIC_APP_URL } from "@/lib/config";
 
 const PDFDownloadLink = dynamic(
     () => import("@react-pdf/renderer").then((mod) => mod.PDFDownloadLink),
@@ -72,10 +74,23 @@ export default function BotonDescargaPDF({ datosEvaluacion, nombreArchivo }: Bot
             const fotoB64 = await convertirURL_A_Base64(datosEvaluacion.paciente?.foto_url, false);
             const firmaB64 = await convertirURL_A_Base64(datosEvaluacion.firma_paciente_url, true);
 
+            // Generar QR de verificación digital (enlace público del examen en PRODUCCIÓN)
+            let qrDataUrl: string | null = null;
+            try {
+                if (datosEvaluacion.evaluacion_id) {
+                    const qrUrl = `${PUBLIC_APP_URL}/ver-examen/${datosEvaluacion.evaluacion_id}`;
+                    qrDataUrl = await QRCode.toDataURL(qrUrl, { margin: 1, width: 320, errorCorrectionLevel: "M" });
+                }
+            } catch (qrErr) {
+                console.error("Error generando código QR:", qrErr);
+            }
+
             setDatosProcesados({
                 ...datosEvaluacion,
                 paciente: { ...datosEvaluacion.paciente, foto_url: fotoB64 },
-                firma_paciente_url: firmaB64
+                firma_paciente_url: firmaB64,
+                qr_url: qrDataUrl,
+                url_verificacion: datosEvaluacion.evaluacion_id ? `${PUBLIC_APP_URL}/ver-examen/${datosEvaluacion.evaluacion_id}` : null,
             });
             setMounted(true);
         };

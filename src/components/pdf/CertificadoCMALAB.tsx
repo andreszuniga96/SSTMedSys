@@ -2,14 +2,38 @@ import React from 'react';
 import { Page, Text, View, Document, StyleSheet, Image } from '@react-pdf/renderer';
 
 const styles = StyleSheet.create({
-    page: { padding: 25, fontSize: 7.5, fontFamily: 'Helvetica' },
-    // Header
-    headerContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, alignItems: 'flex-start' },
-    headerLeft: { width: '70%' },
-    headerRight: { width: 65, height: 80, border: '1pt solid #cbd5e1', borderRadius: 4, overflow: 'hidden', backgroundColor: '#f8fafc', alignItems: 'center', justifyContent: 'center' },
-    title: { fontSize: 11, fontWeight: 'bold', marginBottom: 1 },
-    subtitle: { fontSize: 8, color: '#475569', marginBottom: 1 },
-    dateText: { fontSize: 7, marginTop: 4 },
+    page: { padding: 22, fontSize: 7.5, fontFamily: 'Helvetica' },
+    // Header banner: QR + foto integrados sin afectar el resto del certificado
+    headerContainer: {
+        flexDirection: 'row',
+        alignItems: 'stretch',
+        marginBottom: 8,
+        border: '1pt solid #0891b2',
+        borderRadius: 6,
+        overflow: 'hidden',
+        backgroundColor: '#f0fdfa',
+    },
+    headerLeft: {
+        flex: 1,
+        padding: '6 10',
+        justifyContent: 'center',
+        borderRight: '0.5pt solid #ccfbf1',
+    },
+    headerRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 4,
+        gap: 6,
+    },
+    title: { fontSize: 11, fontWeight: 'bold', marginBottom: 1, color: '#134e4a' },
+    subtitle: { fontSize: 8, color: '#0e7490', marginBottom: 1, fontWeight: 'bold' },
+    dateText: { fontSize: 7, marginTop: 3, color: '#155e75' },
+    // QR verification (banner, a la izquierda de la foto)
+    qrBox: { width: 60, height: 60, border: '1pt solid #0891b2', padding: 3, backgroundColor: '#ffffff', borderRadius: 4 },
+    qrImage: { width: '100%', height: '100%', objectFit: 'contain' },
+    qrTitle: { fontSize: 6, fontWeight: 'bold', color: '#0e7490', textAlign: 'center', marginBottom: 1 },
+    qrText: { fontSize: 5, color: '#475569', textAlign: 'center', width: 84, lineHeight: 1.25 },
+    patientPhoto: { width: 74, height: 92, objectFit: 'cover', borderRadius: 4, border: '0.75pt solid #0891b2' },
     // Sections
     section: { marginBottom: 4, border: '1pt solid #cbd5e1', borderRadius: 3, overflow: 'hidden' },
     sectionTitle: { backgroundColor: '#f1f5f9', padding: '3 6', fontWeight: 'bold', borderBottom: '1pt solid #cbd5e1', fontSize: 8, color: '#1e293b' },
@@ -35,7 +59,6 @@ const styles = StyleSheet.create({
     legalText: { fontSize: 6, textAlign: 'justify', color: '#64748b', lineHeight: 1.3 },
     // Page num
     pageNum: { position: 'absolute', top: 10, right: 25, fontSize: 6, color: '#94a3b8' },
-    patientPhoto: { width: '100%', height: '100%', objectFit: 'cover' },
 });
 
 const calcularEdad = (fn: string) => {
@@ -57,10 +80,10 @@ export const CertificadoCMALAB = ({ datos }: { datos: any }) => (
         <Page size="LETTER" style={styles.page}>
             <Text style={styles.pageNum}>Página 1</Text>
 
-            {/* HEADER */}
-            <View style={styles.headerContainer}>
+            {/* HEADER BANNER: título + QR (izquierda de la foto) + foto */}
+            <View style={styles.headerContainer} wrap={false}>
                 <View style={styles.headerLeft}>
-                    <Text style={styles.title}>SEGURIDAD Y SALUD EN EL TRABAJO</Text>
+                    <Text style={styles.subtitle}>SEGURIDAD Y SALUD EN EL TRABAJO</Text>
                     <Text style={styles.title}>CONCEPTO MÉDICO DE APTITUD LABORAL</Text>
                     <Text style={[styles.dateText, { fontWeight: 'bold' }]}>CIUDAD Y FECHA DE REALIZACIÓN:</Text>
                     <Text style={styles.dateText}>
@@ -68,11 +91,26 @@ export const CertificadoCMALAB = ({ datos }: { datos: any }) => (
                     </Text>
                 </View>
                 <View style={styles.headerRight}>
-                    {datos.paciente?.foto_url ? (
-                        <Image style={styles.patientPhoto} src={datos.paciente.foto_url} />
-                    ) : (
-                        <Text style={{ fontSize: 7, color: '#94a3b8' }}>SIN FOTO</Text>
+                    {/* QR de verificación digital a la izquierda de la foto */}
+                    {datos.qr_url && (
+                        <View style={{ alignItems: 'center' }}>
+                            <Text style={styles.qrTitle}>VERIFICACIÓN</Text>
+                            <Text style={styles.qrText}>Escanea para ver tu examen médico en línea</Text>
+                            <View style={styles.qrBox}>
+                                <Image style={styles.qrImage} src={datos.qr_url} />
+                            </View>
+                        </View>
                     )}
+                    {/* Foto del paciente (más grande) */}
+                    <View>
+                        {datos.paciente?.foto_url ? (
+                            <Image style={styles.patientPhoto} src={datos.paciente.foto_url} />
+                        ) : (
+                            <View style={[styles.patientPhoto, { backgroundColor: '#e2e8f0', alignItems: 'center', justifyContent: 'center' }]}>
+                                <Text style={{ fontSize: 6, color: '#64748b' }}>SIN FOTO</Text>
+                            </View>
+                        )}
+                    </View>
                 </View>
             </View>
 
@@ -250,8 +288,8 @@ export const CertificadoCMALAB = ({ datos }: { datos: any }) => (
             <View style={[styles.signatures, { marginTop: 15 }]} wrap={false}>
                 <View style={styles.signatureBox}>
                     <View style={{ position: 'relative', height: 50, justifyContent: 'flex-end', alignItems: 'center' }}>
-                        <Image style={styles.imgDoctorSeal} src="/sellodra.png" />
-                        <Image style={styles.imgDoctorSig} src="/firmadra.png" />
+                        <Image style={styles.imgDoctorSeal} src={datos.img_doctor_seal || "/sellodra.png"} />
+                        <Image style={styles.imgDoctorSig} src={datos.img_doctor_sig || "/firmadra.png"} />
                     </View>
                     <View style={styles.signatureLine} />
                     <Text style={{ fontWeight: 'bold', fontSize: 8 }}>DRA. VIVIANA QUIROZ R.</Text>
@@ -335,8 +373,8 @@ export const CertificadoCMALAB = ({ datos }: { datos: any }) => (
             <View style={[styles.signatures, { marginTop: 20 }]} wrap={false}>
                 <View style={styles.signatureBox}>
                     <View style={{ position: 'relative', height: 50, justifyContent: 'flex-end', alignItems: 'center' }}>
-                        <Image style={styles.imgDoctorSeal} src="/sellodra.png" />
-                        <Image style={styles.imgDoctorSig} src="/firmadra.png" />
+                        <Image style={styles.imgDoctorSeal} src={datos.img_doctor_seal || "/sellodra.png"} />
+                        <Image style={styles.imgDoctorSig} src={datos.img_doctor_sig || "/firmadra.png"} />
                     </View>
                     <View style={styles.signatureLine} />
                     <Text style={{ fontWeight: 'bold', fontSize: 8 }}>DRA. VIVIANA QUIROZ R.</Text>

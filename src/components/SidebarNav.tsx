@@ -112,16 +112,16 @@ export function SidebarNav({ userEmail }: { userEmail: string }) {
                 {/* Logo Header */}
                 <div className={`h-16 flex items-center ${collapsed ? "justify-center" : "px-5 justify-between"} border-b border-slate-800/60 transition-all`}>
                     <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold shrink-0"
-                            style={{ background: 'linear-gradient(135deg, var(--primary-500), var(--primary-700))' }}>
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-lg"
+                            style={{ background: 'linear-gradient(135deg, var(--primary-400), var(--primary-700))', boxShadow: '0 4px 14px rgb(20 184 166 / 0.4)' }}>
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 21s-6.5-4.35-9-8.5C1.5 9.5 3.5 5.5 7 4.5c2.2-.6 4.5.2 5 1 .5-.8 2.8-1.6 5-1 3.5 1 5.5 5 4 8-2.5 4.15-9 8.5-9 8.5z" />
                             </svg>
                         </div>
                         {!collapsed && (
                             <div>
                                 <span className="font-bold text-white text-sm tracking-wide block">SST MedSys</span>
-                                <span className="text-[0.65rem] text-slate-500 font-medium whitespace-nowrap">Salud Ocupacional</span>
+                                <span className="text-[0.65rem] text-teal-300/70 font-medium whitespace-nowrap">Salud Ocupacional · CMALAB</span>
                             </div>
                         )}
                     </div>
@@ -143,8 +143,8 @@ export function SidebarNav({ userEmail }: { userEmail: string }) {
                 )}
 
                 {/* Navigation */}
-                <nav className="flex-1 px-3 py-5 space-y-2 overflow-y-auto overflow-x-hidden">
-                    <p className={`text-[0.65rem] font-semibold text-slate-500 uppercase tracking-widest mb-3 transition-all ${collapsed ? "text-center px-0" : "px-3"}`}>
+                <nav className="flex-1 px-3 py-5 space-y-1.5 overflow-y-auto overflow-x-hidden">
+                    <p className={`text-[0.65rem] font-semibold text-teal-400/60 uppercase tracking-widest mb-3 transition-all ${collapsed ? "text-center px-0" : "px-3"}`}>
                         {collapsed ? "—" : "Módulos"}
                     </p>
                     {navItems.map((item) => (
@@ -165,7 +165,7 @@ export function SidebarNav({ userEmail }: { userEmail: string }) {
                 <div className={`p-4 border-t border-slate-800/60 ${collapsed ? "flex flex-col items-center" : ""}`}>
                     <div className={`flex items-center gap-3 mb-3 ${collapsed ? "justify-center" : ""}`}>
                         <div
-                            className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
+                            className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 ring-2 ring-teal-400/40"
                             style={{ background: 'linear-gradient(135deg, var(--accent-500), var(--accent-600))' }}
                             title={collapsed ? userEmail : ""}
                         >

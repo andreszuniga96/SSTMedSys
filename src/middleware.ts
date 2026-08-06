@@ -57,8 +57,14 @@ export async function middleware(request: NextRequest) {
     // Refresca la sesión y el JWT
     const { data: { user } } = await supabase.auth.getUser()
 
-    // Proteger rutas: Si no hay usuario y no está en la página de login, redirigir a /login
-    if (!user && !request.nextUrl.pathname.startsWith('/login')) {
+    // Rutas públicas: no requieren autenticación
+    const isPublicRoute =
+        request.nextUrl.pathname.startsWith('/login') ||
+        request.nextUrl.pathname.startsWith('/pre-atencion') ||
+        request.nextUrl.pathname.startsWith('/ver-examen')
+
+    // Proteger rutas: Si no hay usuario y no está en una ruta pública, redirigir a /login
+    if (!user && !isPublicRoute) {
         const url = request.nextUrl.clone()
         url.pathname = '/login'
         return NextResponse.redirect(url)

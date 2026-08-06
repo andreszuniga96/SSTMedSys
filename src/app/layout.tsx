@@ -5,8 +5,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "CRM Salud Ocupacional - Dra. Quirós",
-  description: "Sistema de gestión integral para Seguridad y Salud en el Trabajo",
+  title: "SST MedSys — Sistema de Gestión en Salud Ocupacional",
+  description: "Plataforma integral de gestión de pacientes, evaluaciones médicas ocupacionales y certificados de aptitud laboral (CMALAB).",
 };
 
 import { Toaster } from "react-hot-toast";
@@ -18,12 +18,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es">
-      <body className={`${inter.className} bg-slate-50 text-slate-900 antialiased`}>
-        {/* Aquí integraremos la navegación superior/lateral del repositorio UI/UX más adelante */}
+      <body className={`${inter.className} antialiased`}>
         <main className="min-h-screen">
           {children}
         </main>
-        <Toaster position="top-right" />
+        <Toaster position="top-right" toastOptions={{ style: { borderRadius: '0.75rem', fontSize: '0.875rem' } }} />
       </body>
     </html>
   );

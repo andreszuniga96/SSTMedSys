@@ -28,8 +28,10 @@ export default function NuevaEvaluacion() {
     const [paso, setPaso] = useState(1);
     const [modoFirma, setModoFirma] = useState<"pad" | "upload">("pad");
     const [firmaUpload, setFirmaUpload] = useState<string | null>(null);
+    const [firmaExistenteUrl, setFirmaExistenteUrl] = useState<string | null>(null);
     const [diagnosticosCIE10, setDiagnosticosCIE10] = useState<DiagnosticoCIE10[]>([]);
     const [busquedaPaciente, setBusquedaPaciente] = useState("");
+    const [autoEnviarCorreo, setAutoEnviarCorreo] = useState(false);
 
     const [formData, setFormData] = useState({
         paciente_id: "",
@@ -108,9 +110,17 @@ export default function NuevaEvaluacion() {
                     firma_paciente_cedula: p.documento_identidad,
                     cargo: p.profesion || prev.cargo,
                 }));
+                // Si el paciente es virtual (telemedicina) y ya capturó su firma en el portal, precargarla.
+                // Si no tiene firma, limpiar cualquier precarga anterior (evita firmar con la de otro paciente).
+                setFirmaExistenteUrl(p.firma_url || null);
+                setFirmaUpload(null);
+                if (p.firma_url) {
+                    setModoFirma("upload");
+                }
             }
         } else {
             setPacienteSeleccionado(null);
+            setFirmaExistenteUrl(null);
         }
     }, [formData.paciente_id, pacientes]);
 
@@ -138,6 +148,10 @@ export default function NuevaEvaluacion() {
     };
 
     const procesarYSubirFirma = async (base64Image: string, evaluacionId: string) => {
+        // Si ya es una URL pública (firma capturada en el portal pre-atención), usarla directamente
+        if (base64Image.startsWith("http")) {
+            return base64Image;
+        }
         const res = await fetch(base64Image);
         const blob = await res.blob();
         const rutaArchivo = `${evaluacionId}_firma_paciente.png`;
@@ -165,7 +179,7 @@ export default function NuevaEvaluacion() {
         if (modoFirma === "pad") {
             signatureBase64 = signatureRef.current?.getSignature() || null;
         } else {
-            signatureBase64 = firmaUpload;
+            signatureBase64 = firmaUpload || firmaExistenteUrl || null;
         }
 
         if (!signatureBase64 && formData.modalidad === "Presencial") {
@@ -280,6 +294,33 @@ export default function NuevaEvaluacion() {
 
             for (const res of results) {
                 if (res && res.error) throw res.error;
+            }
+
+            // 8. Envío automático del certificado por correo (si está activado y hay correo)
+            const pacienteCorreo = pacienteSeleccionado?.correo_electronico;
+            if (autoEnviarCorreo) {
+                if (pacienteCorreo) {
+                    toast.loading("Enviando certificado al paciente...", { id: "enviando-cert" });
+                    try {
+                        const res = await fetch("/api/enviar-certificado", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ evaluacion_id: evaluacion.id }),
+                        });
+                        const data = await res.json();
+                        toast.dismiss("enviando-cert");
+                        if (res.ok) {
+                            toast.success(data?.message || "✅ Certificado enviado por correo.");
+                        } else {
+                            toast.error(data?.error || "No se pudo enviar el certificado.");
+                        }
+                    } catch (sendErr: any) {
+                        toast.dismiss("enviando-cert");
+                        toast.error(`No se pudo enviar el certificado: ${sendErr?.message || "error"}`);
+                    }
+                } else {
+                    toast.error("El paciente no tiene correo registrado; no se envió el certificado automáticamente.");
+                }
             }
 
             toast.success("✅ Evaluación registrada exitosamente. Certificado listo para descargar.");
@@ -644,6 +685,22 @@ export default function NuevaEvaluacion() {
                                 <h3 className="text-sm font-bold text-emerald-900">Firma del Trabajador</h3>
                             </div>
                             <div className="section-body space-y-4">
+                                {pacienteSeleccionado?.correo_electronico && (
+                                    <label className="flex items-center gap-3 p-3.5 rounded-xl bg-sky-50 border border-sky-200 cursor-pointer hover:bg-sky-100/60 transition-colors">
+                                        <input
+                                            type="checkbox"
+                                            checked={autoEnviarCorreo}
+                                            onChange={(e) => setAutoEnviarCorreo(e.target.checked)}
+                                            className="w-5 h-5 text-sky-600 rounded"
+                                        />
+                                        <div className="flex-1">
+                                            <p className="text-sm font-bold text-sky-900">📧 Enviar certificado automáticamente por correo</p>
+                                            <p className="text-xs text-sky-700">
+                                                Al guardar, el PDF del certificado y el enlace de verificación se enviarán a <strong>{pacienteSeleccionado.correo_electronico}</strong>
+                                            </p>
+                                        </div>
+                                    </label>
+                                )}
                                 <div className="flex gap-2">
                                     <button type="button" onClick={() => setModoFirma("pad")} className={`px-4 py-2 rounded-lg text-xs font-bold ${modoFirma === "pad" ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-700"}`}>
                                         ✏️ Dibujar Firma
@@ -656,10 +713,20 @@ export default function NuevaEvaluacion() {
                                 {modoFirma === "pad" ? (
                                     <SignaturePad ref={signatureRef} />
                                 ) : (
-                                    <div>
+                                    <div className="space-y-3">
+                                        {firmaExistenteUrl && !firmaUpload && (
+                                            <div className="flex items-center gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                                                <span className="text-xl">✅</span>
+                                                <div className="flex-1">
+                                                    <p className="text-xs font-bold text-emerald-800">Firma capturada en el portal de pre-atención</p>
+                                                    <p className="text-[0.65rem] text-emerald-700">Se usará automáticamente en el certificado. Puede reemplazarla subiendo otra o dibujando una nueva.</p>
+                                                </div>
+                                                <img src={firmaExistenteUrl} alt="Firma precargada" className="h-12 object-contain bg-white rounded-lg border border-emerald-200" />
+                                            </div>
+                                        )}
                                         <input ref={firmaFileRef} type="file" accept="image/*" onChange={handleFirmaUpload} className="hidden" />
                                         <div onClick={() => firmaFileRef.current?.click()} className="w-full max-w-lg h-36 rounded-xl border-2 border-dashed border-slate-300 flex items-center justify-center cursor-pointer hover:border-blue-500">
-                                            {firmaUpload ? <img src={firmaUpload} alt="Firma" className="h-full object-contain p-2" /> : <span className="text-xs text-slate-500">Clic para subir foto de firma manuscrita</span>}
+                                            {firmaUpload ? <img src={firmaUpload} alt="Firma" className="h-full object-contain p-2" /> : <span className="text-xs text-slate-500">Clic para subir foto de firma manuscrita (o mantener la precargada)</span>}
                                         </div>
                                     </div>
                                 )}
