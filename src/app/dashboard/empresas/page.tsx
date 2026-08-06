@@ -4,6 +4,9 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import toast from "react-hot-toast";
+import PageHeader from "@/components/dashboard/PageHeader";
+import Modal from "@/components/dashboard/Modal";
+import LoadingState from "@/components/dashboard/LoadingState";
 
 export default function EmpresasPage() {
     const [empresas, setEmpresas] = useState<any[]>([]);
@@ -141,25 +144,23 @@ export default function EmpresasPage() {
     return (
         <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
             {/* Header */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 card-premium p-6">
-                <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-xl flex items-center justify-center text-teal-700 bg-teal-50 border border-teal-200 shrink-0">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                        </svg>
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-bold text-slate-900">Empresas</h1>
-                        <p className="text-sm text-slate-500 mt-0.5">Clientes contratantes y su historial de exámenes ocupacionales</p>
-                    </div>
-                </div>
-                <button onClick={abrirNueva} className="btn-primary">
+            <PageHeader
+                icono={
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                     </svg>
-                    Nueva Empresa
-                </button>
-            </div>
+                }
+                titulo="Empresas"
+                subtitulo="Clientes contratantes y su historial de exámenes ocupacionales"
+                acciones={
+                    <button onClick={abrirNueva} className="btn-primary">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                        </svg>
+                        Nueva Empresa
+                    </button>
+                }
+            />
 
             {/* Buscador */}
             <div className="relative w-full md:w-96">
@@ -179,10 +180,7 @@ export default function EmpresasPage() {
 
             {/* Grid de empresas */}
             {loading ? (
-                <div className="text-center py-16">
-                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
-                    <p className="text-xs text-slate-500 mt-3">Cargando empresas...</p>
-                </div>
+                <LoadingState texto="Cargando empresas..." />
             ) : filtradas.length === 0 ? (
                 <div className="section-premium p-12 text-center">
                     <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center mx-auto mb-3 text-teal-400">
@@ -247,18 +245,20 @@ export default function EmpresasPage() {
             )}
 
             {/* Modal crear/editar */}
-            {modalOpen && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setModalOpen(false)}>
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-                            <h3 className="font-bold text-slate-900">{editandoId ? "Editar Empresa" : "Nueva Empresa"}</h3>
-                            <button onClick={() => setModalOpen(false)} className="text-slate-400 hover:text-slate-600">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                        </div>
-                        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Modal
+                abierto={modalOpen}
+                onCerrar={() => setModalOpen(false)}
+                titulo={editandoId ? "Editar Empresa" : "Nueva Empresa"}
+                footer={
+                    <>
+                        <button onClick={() => setModalOpen(false)} className="btn-secondary">Cancelar</button>
+                        <button onClick={guardar} disabled={guardando} className="btn-primary">
+                            {guardando ? "Guardando..." : editandoId ? "Guardar cambios" : "Registrar empresa"}
+                        </button>
+                    </>
+                }
+            >
+                <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="md:col-span-2">
                                 <label className="label-premium">Nombre *</label>
                                 <input className="input-premium" placeholder="Ej. AMPM24 SAS" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
@@ -304,16 +304,8 @@ export default function EmpresasPage() {
                                     <option value="Equidad">Equidad</option>
                                 </select>
                             </div>
-                        </div>
-                        <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
-                            <button onClick={() => setModalOpen(false)} className="btn-secondary">Cancelar</button>
-                            <button onClick={guardar} disabled={guardando} className="btn-primary">
-                                {guardando ? "Guardando..." : editandoId ? "Guardar cambios" : "Registrar empresa"}
-                            </button>
-                        </div>
-                    </div>
                 </div>
-            )}
+            </Modal>
         </div>
     );
 }

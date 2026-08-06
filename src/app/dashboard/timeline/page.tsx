@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import toast from "react-hot-toast";
+import PageHeader from "@/components/dashboard/PageHeader";
 
 const TIPOS_EVENTO: Record<string, { color: string; label: string; bg: string; ring: string }> = {
     evaluacion_medica: { color: "#0d9488", label: "Evaluación Médica", bg: "bg-teal-50 border-teal-200", ring: "bg-teal-500" },
@@ -148,23 +149,15 @@ export default function TimelinePage() {
     return (
         <div className="max-w-6xl mx-auto space-y-6 animate-fade-in pb-10">
             {/* Header */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 card-premium p-6">
-                <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-xl flex items-center justify-center text-teal-700 bg-teal-50 border border-teal-200 shrink-0">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                    </div>
-                    <div>
-                        <h2 className="text-2xl font-bold text-slate-900">
-                            Línea de Tiempo Ocupacional
-                        </h2>
-                        <p className="text-sm text-slate-600 mt-0.5">
-                            Historial clínico longitudinal y evolución médica del trabajador
-                        </p>
-                    </div>
-                </div>
-            </div>
+            <PageHeader
+                icono={
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                }
+                titulo="Línea de Tiempo Ocupacional"
+                subtitulo="Historial clínico longitudinal y evolución médica del trabajador"
+            />
 
             {/* Patient Selector */}
             <div className="section-premium">

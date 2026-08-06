@@ -1,5 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
+import ConceptoBadge from "@/components/dashboard/ConceptoBadge";
+import AlertaVigencia from "@/components/dashboard/AlertaVigencia";
+import { examenMasRecientePorPaciente, clasificarPorVigencia } from "@/lib/vigencia";
 
 // Iconos SVG (Heroicons outline) — sin emojis, estilo profesional
 const IconPacientes = () => (
@@ -101,34 +104,10 @@ export default async function DashboardPage() {
         .order("fecha_actual", { ascending: false })
         .limit(500);
 
-    // Por cada paciente, quedarnos con el examen más reciente (con certificado)
-    const porPaciente = new Map<string, any>();
-    (todasEvaluaciones || []).forEach((ev: any) => {
-        if (!ev.paciente?.id || !ev.certificado) return;
-        if (!porPaciente.has(ev.paciente.id)) porPaciente.set(ev.paciente.id, ev);
-    });
+    // Por cada paciente, el examen más reciente con certificado define su vigencia
+    const porPaciente = examenMasRecientePorPaciente(todasEvaluaciones || []);
 
-    const hoy = new Date();
-    const examenVencido = (fecha: string, meses: number) => {
-        const venc = new Date(fecha);
-        venc.setMonth(venc.getMonth() + (meses || 12));
-        return { venceEn: venc, vencido: venc < hoy };
-    };
-
-    const porVencer: any[] = [];
-    const vencidos: any[] = [];
-    porPaciente.forEach((ev: any) => {
-        if (!ev.fecha_actual) return;
-        const { venceEn, vencido } = examenVencido(ev.fecha_actual, ev.vigencia_meses);
-        const dias = Math.ceil((venceEn.getTime() - hoy.getTime()) / 86400000);
-        if (vencido) {
-            vencidos.push({ ...ev, diasVencido: Math.abs(dias) });
-        } else if (dias <= 60) {
-            porVencer.push({ ...ev, diasRestantes: dias });
-        }
-    });
-    porVencer.sort((a, b) => a.diasRestantes - b.diasRestantes);
-    vencidos.sort((a, b) => b.diasVencido - a.diasVencido);
+    const { porVencer, vencidos } = clasificarPorVigencia([...porPaciente.values()]);
 
     const TIPO_EMOJI: Record<string, string> = {
         evaluacion_medica: "🏥",
@@ -140,15 +119,6 @@ export default async function DashboardPage() {
         vacunacion: "💉",
         examen_complementario: "🔬",
         nota_clinica: "📝",
-    };
-
-    const conceptoBadge = (concepto: string | undefined) => {
-        switch (concepto) {
-            case 'Apto': return 'badge-green';
-            case 'No Apto': return 'badge-red';
-            case 'Apto con Restricciones': return 'badge-amber';
-            default: return 'badge-slate';
-        }
     };
 
     const accionesRapidas = [
@@ -325,70 +295,7 @@ export default async function DashboardPage() {
             </div>
 
             {/* 4. Alerta de vigencia: exámenes por vencer y vencidos */}
-            {(porVencer.length > 0 || vencidos.length > 0) && (
-                <div className="space-y-4">
-                    {vencidos.length > 0 && (
-                        <div className="rounded-2xl border border-red-200 bg-red-50/70 p-5 animate-fade-in">
-                            <div className="flex items-center gap-2 mb-4">
-                                <span className="w-8 h-8 rounded-lg bg-red-100 text-red-600 flex items-center justify-center">
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                    </svg>
-                                </span>
-                                <div>
-                                    <h3 className="text-sm font-bold text-red-800">Exámenes vencidos — requieren renovación</h3>
-                                    <p className="text-xs text-red-600">Pacientes cuyo examen ocupacional superó su vigencia</p>
-                                </div>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                                {vencidos.slice(0, 8).map((ev: any) => (
-                                    <div key={ev.id} className="flex items-center gap-2 px-3 py-2 bg-white rounded-xl border border-red-200 shadow-sm">
-                                        <span className="text-xs font-bold text-red-700">{ev.paciente.nombre_completo}</span>
-                                        <span className="text-[0.65rem] text-red-500">vencido hace {ev.diasVencido} días</span>
-                                        <Link href={`/dashboard/evaluaciones/nueva?paciente_id=${ev.paciente.id}`} className="text-[0.65rem] font-bold text-teal-700 hover:underline">
-                                            Renovar →
-                                        </Link>
-                                    </div>
-                                ))}
-                                {vencidos.length > 8 && (
-                                    <span className="text-xs font-semibold text-red-600 self-center">+{vencidos.length - 8} más</span>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                    {porVencer.length > 0 && (
-                        <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-5 animate-fade-in">
-                            <div className="flex items-center gap-2 mb-4">
-                                <span className="w-8 h-8 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center">
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    </svg>
-                                </span>
-                                <div>
-                                    <h3 className="text-sm font-bold text-amber-800">Exámenes por vencer (próximos 60 días)</h3>
-                                    <p className="text-xs text-amber-600">Programe la renovación de estos exámenes ocupacionales</p>
-                                </div>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                                {porVencer.slice(0, 8).map((ev: any) => (
-                                    <div key={ev.id} className="flex items-center gap-2 px-3 py-2 bg-white rounded-xl border border-amber-200 shadow-sm">
-                                        <span className="text-xs font-bold text-slate-800">{ev.paciente.nombre_completo}</span>
-                                        <span className="text-[0.65rem] text-amber-600">
-                                            {ev.diasRestantes === 0 ? "vence HOY" : `vence en ${ev.diasRestantes} días`}
-                                        </span>
-                                        <Link href={`/dashboard/evaluaciones/nueva?paciente_id=${ev.paciente.id}`} className="text-[0.65rem] font-bold text-teal-700 hover:underline">
-                                            Agendar renovación →
-                                        </Link>
-                                    </div>
-                                ))}
-                                {porVencer.length > 8 && (
-                                    <span className="text-xs font-semibold text-amber-600 self-center">+{porVencer.length - 8} más</span>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            )}
+            <AlertaVigencia vencidos={vencidos} porVencer={porVencer} />
 
             {/* Two columns: Recent evaluations + Timeline */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -437,9 +344,7 @@ export default async function DashboardPage() {
                                                 </div>
                                             </div>
                                         </div>
-                                        <span className={`badge shadow-sm ${conceptoBadge(ev.certificado?.concepto_medico)}`}>
-                                            {ev.certificado?.concepto_medico || 'Pendiente'}
-                                        </span>
+                                        <ConceptoBadge concepto={ev.certificado?.concepto_medico} sombra />
                                     </div>
                                 );
                             })

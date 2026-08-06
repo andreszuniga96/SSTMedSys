@@ -6,6 +6,7 @@ import QRCode from "qrcode";
 import { CertificadoCMALAB } from "@/components/pdf/CertificadoCMALAB";
 import { construirDatosCertificado } from "@/lib/certificado-data";
 import { PUBLIC_APP_URL } from "@/lib/config";
+import { convertirImagenABase64 } from "@/lib/imagenes-cliente";
 
 const PDFDownloadLink = dynamic(
     () => import("@react-pdf/renderer").then((mod) => mod.PDFDownloadLink),
@@ -39,41 +40,9 @@ export default function BotonDescargarCertificado({
 
     useEffect(() => {
         const preparar = async () => {
-            // Conversión de imágenes a Base64 para el PDF (FileReader, compatible navegador)
-            const convertirURL_A_Base64 = async (url: string | null | undefined, bucket?: string) => {
-                if (!url) return null;
-                if (url.startsWith("data:image")) return url;
-
-                let fullUrl = url;
-                if (!url.startsWith("http")) {
-                    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://qosttaogcnoioytdjuyi.supabase.co";
-                    if (bucket) {
-                        fullUrl = `${supabaseUrl}/storage/v1/object/public/${bucket}/${url}`;
-                    } else if (url.startsWith("/")) {
-                        fullUrl = `${PUBLIC_APP_URL}${url}`;
-                    } else {
-                        fullUrl = `${supabaseUrl}/storage/v1/object/public/${url}`;
-                    }
-                }
-
-                try {
-                    const res = await fetch(fullUrl);
-                    if (!res.ok) return null;
-                    const blob = await res.blob();
-                    if (!blob.type.startsWith("image/")) return null;
-                    return await new Promise((resolve) => {
-                        const reader = new FileReader();
-                        reader.onloadend = () => resolve(reader.result);
-                        reader.readAsDataURL(blob);
-                    });
-                } catch {
-                    return null;
-                }
-            };
-
             const [fotoB64, firmaB64] = await Promise.all([
-                convertirURL_A_Base64(examen.paciente?.foto_url, "biometria_pacientes"),
-                convertirURL_A_Base64(examen.certificado?.firma_paciente_url, "firmas_biometricas"),
+                convertirImagenABase64(examen.paciente?.foto_url, { bucket: "biometria_pacientes" }),
+                convertirImagenABase64(examen.certificado?.firma_paciente_url, { bucket: "firmas_biometricas" }),
             ]);
 
             // QR de verificación (apunta a esta misma página pública)
@@ -131,7 +100,6 @@ export default function BotonDescargarCertificado({
                     : "bg-teal-600 hover:bg-teal-700 text-white shadow-md"
             }`}
         >
-            {/* @ts-ignore */}
             {({ loading }) =>
                 loading ? (
                     <span className="inline-flex items-center gap-2">

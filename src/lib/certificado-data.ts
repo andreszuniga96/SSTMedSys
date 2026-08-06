@@ -4,7 +4,7 @@
  * API de envío automático por correo (servidor).
  */
 import QRCode from "qrcode";
-import { PUBLIC_APP_URL } from "@/lib/config";
+import { PUBLIC_APP_URL, SUPABASE_URL } from "@/lib/config";
 
 export interface DatosCertificadoInput {
     evaluacion: any;
@@ -30,7 +30,7 @@ export const urlABase64 = async (
 
     let fullUrl = url;
     if (!url.startsWith("http")) {
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://qosttaogcnoioytdjuyi.supabase.co";
+        const supabaseUrl = SUPABASE_URL;
         if (bucket) {
             fullUrl = `${supabaseUrl}/storage/v1/object/public/${bucket}/${url}`;
         } else if (url.startsWith("/")) {

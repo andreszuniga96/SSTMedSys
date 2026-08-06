@@ -5,6 +5,7 @@ import Link from "next/link";
 import BotonDescargaPDF from "@/components/pdf/BotonDescargaPDF";
 import BotonEnviarCorreo from "@/components/BotonEnviarCorreo";
 import { construirDatosCertificado, type DatosCertificadoInput } from "@/lib/certificado-data";
+import ConceptoBadge from "@/components/dashboard/ConceptoBadge";
 
 type TabId = "presencial" | "virtual";
 
@@ -20,15 +21,6 @@ interface EvaluacionesTabsProps {
 const esVirtual = (e: any) => {
     const modalidad = (e.modalidad || "Presencial").toLowerCase();
     return modalidad.includes("virt") || modalidad.includes("tele");
-};
-
-const conceptoStyle = (concepto: string | undefined) => {
-    switch (concepto) {
-        case 'Apto': return 'badge-green';
-        case 'No Apto': return 'badge-red';
-        case 'Apto con Restricciones': return 'badge-amber';
-        default: return 'badge-slate';
-    }
 };
 
 const tipoStyle = (tipo: string) => {
@@ -104,9 +96,7 @@ export default function EvaluacionesTabs({ evaluaciones, certificados, pacientes
                     </span>
                 </td>
                 <td>
-                    <span className={`badge ${conceptoStyle(certificado.concepto_medico)}`}>
-                        {certificado.concepto_medico || 'Apto'}
-                    </span>
+                    <ConceptoBadge concepto={certificado.concepto_medico} />
                 </td>
                 <td className="text-right">
                     <div className="flex justify-end items-center gap-2">

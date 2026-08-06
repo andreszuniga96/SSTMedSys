@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import QRCode from "qrcode";
 import { CertificadoCMALAB } from "./CertificadoCMALAB";
 import { PUBLIC_APP_URL } from "@/lib/config";
+import { convertirImagenABase64 } from "@/lib/imagenes-cliente";
 
 const PDFDownloadLink = dynamic(
     () => import("@react-pdf/renderer").then((mod) => mod.PDFDownloadLink),
@@ -29,50 +30,8 @@ export default function BotonDescargaPDF({ datosEvaluacion, nombreArchivo }: Bot
 
     useEffect(() => {
         const prepararImagenes = async () => {
-            // Función HTTP estándar que ignora bloqueos internos de Supabase SDK
-            const convertirURL_A_Base64 = async (url: string | null, isFirma: boolean = false) => {
-                if (!url) return null;
-                
-                // Si ya es un Base64 válido, devolverlo inmediatamente sin hacer nada más
-                if (url.startsWith("data:image")) {
-                    return url;
-                }
-                
-                // Si la URL es solo un nombre de archivo (por un error previo), reconstruir la URL pública de Supabase
-                let fullUrl = url;
-                if (!url.startsWith("http")) {
-                    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://qosttaogcnoioytdjuyi.supabase.co";
-                    const bucket = isFirma ? "firmas_biometricas" : "biometria_pacientes";
-                    fullUrl = `${supabaseUrl}/storage/v1/object/public/${bucket}/${url}`;
-                }
-
-                try {
-                    const res = await fetch(fullUrl);
-                    if (!res.ok) {
-                        console.warn(`Imagen inaccesible (${res.status}): ${fullUrl}`);
-                        return null;
-                    }
-                    const blob = await res.blob();
-
-                    // FILTRO DE SEGURIDAD: Evita inyectar JSONs de error al PDF
-                    if (!blob.type.startsWith('image/')) {
-                        console.warn("El archivo descargado no es una imagen válida.");
-                        return null;
-                    }
-
-                    return await new Promise((resolve) => {
-                        const reader = new FileReader();
-                        reader.onloadend = () => resolve(reader.result);
-                        reader.readAsDataURL(blob);
-                    });
-                } catch (e) {
-                    console.error("Error convirtiendo imagen:", e);
-                    return null;
-                }
-            };
-
-            const fotoB64 = await convertirURL_A_Base64(datosEvaluacion.paciente?.foto_url, false);
-            const firmaB64 = await convertirURL_A_Base64(datosEvaluacion.firma_paciente_url, true);
+            const fotoB64 = await convertirImagenABase64(datosEvaluacion.paciente?.foto_url, { bucket: "biometria_pacientes" });
+            const firmaB64 = await convertirImagenABase64(datosEvaluacion.firma_paciente_url, { bucket: "firmas_biometricas" });
 
             // Generar QR de verificación digital (enlace público del examen en PRODUCCIÓN)
             let qrDataUrl: string | null = null;
@@ -112,7 +71,6 @@ export default function BotonDescargaPDF({ datosEvaluacion, nombreArchivo }: Bot
             fileName={`${nombreArchivo}.pdf`}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
         >
-            {/* @ts-ignore */}
             {({ loading }) =>
                 loading ? (
                     "Renderizando PDF..."

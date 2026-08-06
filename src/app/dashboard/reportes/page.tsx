@@ -3,34 +3,16 @@
 import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import toast from "react-hot-toast";
-
-// Utilidad: descargar CSV con BOM UTF-8 (compatible con Excel en español)
-const descargarCSV = (nombreArchivo: string, filas: Record<string, any>[]) => {
-    if (filas.length === 0) return toast.error("No hay datos para exportar.");
-    const columnas = Object.keys(filas[0]);
-    const escapar = (v: any) => {
-        const s = v === null || v === undefined ? "" : String(v);
-        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-    const contenido = [
-        columnas.join(";"),
-        ...filas.map((f) => columnas.map((c) => escapar(f[c])).join(";")),
-    ].join("\r\n");
-    const blob = new Blob(["\uFEFF" + contenido], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${nombreArchivo}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-};
-
-const conceptoStyle: Record<string, string> = {
-    "Apto": "bg-emerald-50 text-emerald-700 border-emerald-200",
-    "No Apto": "bg-red-50 text-red-600 border-red-200",
-    "Apto con Restricciones": "bg-amber-50 text-amber-700 border-amber-200",
-    "Aplazado": "bg-sky-50 text-sky-700 border-sky-200",
-};
+import PageHeader from "@/components/dashboard/PageHeader";
+import LoadingState from "@/components/dashboard/LoadingState";
+import ConceptoBadge from "@/components/dashboard/ConceptoBadge";
+import { descargarCSV } from "@/lib/csv";
+import {
+    fechaVencimientoDe,
+    examenMasRecientePorPaciente,
+    clasificarPorVigencia,
+    VIGENCIA_DEFAULT_MESES,
+} from "@/lib/vigencia";
 
 export default function ReportesPage() {
     const [filtroDesde, setFiltroDesde] = useState("");
@@ -60,6 +42,7 @@ export default function ReportesPage() {
                             fecha_actual,
                             vigencia_meses,
                             paciente:pacientes (
+                                id,
                                 nombre_completo,
                                 documento_identidad
                             ),
@@ -130,6 +113,12 @@ export default function ReportesPage() {
         return { total, porConcepto, porTipo, porModalidad, porEmpresa, tasaAptitud };
     }, [filtradas]);
 
+    // Vigencia: último examen con certificado por paciente, clasificado por vencimiento
+    const { porVencer, vencidos } = useMemo(() => {
+        const masRecientes = examenMasRecientePorPaciente(filtradas);
+        return clasificarPorVigencia([...masRecientes.values()]);
+    }, [filtradas]);
+
     const exportarGeneral = () => {
         descargarCSV("reporte_evaluaciones_sst", filtradas.map((ev) => ({
             Paciente: ev.paciente?.nombre_completo || "",
@@ -140,7 +129,7 @@ export default function ReportesPage() {
             Enfasis: ev.enfasis || "",
             Empresa: (ev.paciente_id ? contextosPorPaciente[ev.paciente_id]?.empresa_nombre : null) || "Particular",
             Concepto: ev.certificado?.concepto_medico || "Sin certificado",
-            Vigencia_meses: ev.vigencia_meses ?? 12,
+            Vigencia_meses: ev.vigencia_meses ?? VIGENCIA_DEFAULT_MESES,
         })));
     };
 
@@ -153,44 +142,82 @@ export default function ReportesPage() {
         })));
     };
 
+    // CSV de vencimientos: exámenes vencidos + por vencer (ya clasificados con el helper)
+    const exportarVencimientos = () => {
+        type FilaVencimiento = {
+            paciente?: { nombre_completo?: string; documento_identidad?: string } | null;
+            paciente_id?: string | null;
+            tipo_evaluacion?: string | null;
+            certificado?: { concepto_medico?: string } | null;
+            // clasificarPorVigencia descarta los exámenes sin fecha
+            fecha_actual: string;
+            vigencia_meses?: number | null;
+            diasVencido?: number;
+            diasRestantes?: number;
+        };
+        const fila = (ev: FilaVencimiento, estado: string, detalleDias: string) => ({
+            Estado: estado,
+            Paciente: ev.paciente?.nombre_completo || "",
+            Documento: ev.paciente?.documento_identidad || "",
+            Empresa: (ev.paciente_id ? contextosPorPaciente[ev.paciente_id]?.empresa_nombre : null) || "Particular",
+            "Tipo examen": ev.tipo_evaluacion || "",
+            Concepto: ev.certificado?.concepto_medico || "Sin certificado",
+            "Fecha examen": ev.fecha_actual?.slice(0, 10) || "",
+            "Fecha vencimiento": fechaVencimientoDe(ev.fecha_actual, ev.vigencia_meses),
+            "Detalle vigencia": detalleDias,
+        });
+        descargarCSV("reporte_vencimientos_sst", [
+            ...vencidos.map((ev) => fila(ev, "Vencido", `Vencido hace ${ev.diasVencido} día(s)`)),
+            ...porVencer.map((ev) => fila(ev, "Por vencer", ev.diasRestantes === 0 ? "Vence HOY" : `Vence en ${ev.diasRestantes} día(s)`)),
+        ]);
+    };
+
     const maxConcepto = Math.max(1, ...Object.values(kpis.porConcepto));
 
     if (loading) {
-        return (
-            <div className="text-center py-20">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
-                <p className="text-xs text-slate-500 mt-3">Generando reportes...</p>
-            </div>
-        );
+        return <LoadingState texto="Generando reportes..." />;
     }
 
     return (
         <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
             {/* Header */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 card-premium p-6">
-                <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-xl flex items-center justify-center text-teal-700 bg-teal-50 border border-teal-200 shrink-0">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                        </svg>
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-bold text-slate-900">Reportes e Indicadores</h1>
-                        <p className="text-sm text-slate-500 mt-0.5">Indicadores SST para entregar a empresas y ARL</p>
-                    </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                    <button onClick={exportarGeneral} className="btn-primary text-sm">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                        </svg>
-                        Exportar Excel (CSV)
-                    </button>
-                    <button onClick={exportarPorEmpresa} className="btn-secondary text-sm">
-                        Exportar por empresa
-                    </button>
-                </div>
-            </div>
+            <PageHeader
+                icono={
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                }
+                titulo="Reportes e Indicadores"
+                subtitulo="Indicadores SST para entregar a empresas y ARL"
+                acciones={
+                    <>
+                        <button onClick={exportarGeneral} className="btn-primary text-sm">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            Exportar Excel (CSV)
+                        </button>
+                        <button onClick={exportarPorEmpresa} className="btn-secondary text-sm">
+                            Exportar por empresa
+                        </button>
+                        <button
+                            onClick={exportarVencimientos}
+                            disabled={vencidos.length === 0 && porVencer.length === 0}
+                            className="btn-secondary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            title={
+                                vencidos.length === 0 && porVencer.length === 0
+                                    ? "No hay exámenes vencidos ni por vencer en el periodo filtrado"
+                                    : "Exportar CSV de vencimientos para empresas y ARL"
+                            }
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            Exportar vencimientos
+                        </button>
+                    </>
+                }
+            />
 
             {/* Filtros */}
             <div className="card-premium p-5">
@@ -264,6 +291,62 @@ export default function ReportesPage() {
                 </div>
             </div>
 
+            {/* Vigencia y renovación */}
+            {(vencidos.length > 0 || porVencer.length > 0) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="card-premium p-5 border-l-4 border-l-red-400">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-[0.65rem] font-bold uppercase text-slate-400">Exámenes vencidos</p>
+                                <p className="text-3xl font-bold text-red-700 mt-1">{vencidos.length}</p>
+                                <p className="text-[0.65rem] text-slate-400 mt-1">Requieren renovación inmediata</p>
+                            </div>
+                            <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                            </div>
+                        </div>
+                        <div className="mt-3 space-y-1.5">
+                            {vencidos.slice(0, 4).map((ev) => (
+                                <div key={ev.id} className="flex justify-between items-center gap-2 text-xs">
+                                    <div className="min-w-0">
+                                        <p className="font-semibold text-slate-700 truncate">{ev.paciente?.nombre_completo || "Trabajador"}</p>
+                                        <p className="text-[0.65rem] text-slate-400">Vence: {fechaVencimientoDe(ev)}</p>
+                                    </div>
+                                    <span className="text-red-500 font-bold shrink-0">hace {ev.diasVencido} días</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="card-premium p-5 border-l-4 border-l-amber-400">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-[0.65rem] font-bold uppercase text-slate-400">Por vencer (60 días)</p>
+                                <p className="text-3xl font-bold text-amber-700 mt-1">{porVencer.length}</p>
+                                <p className="text-[0.65rem] text-slate-400 mt-1">Programe la renovación</p>
+                            </div>
+                            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                            </div>
+                        </div>
+                        <div className="mt-3 space-y-1.5">
+                            {porVencer.slice(0, 4).map((ev) => (
+                                <div key={ev.id} className="flex justify-between items-center gap-2 text-xs">
+                                    <div className="min-w-0">
+                                        <p className="font-semibold text-slate-700 truncate">{ev.paciente?.nombre_completo || "Trabajador"}</p>
+                                        <p className="text-[0.65rem] text-slate-400">Vence: {fechaVencimientoDe(ev)}</p>
+                                    </div>
+                                    <span className="text-amber-600 font-bold shrink-0">{ev.diasRestantes === 0 ? "Vence HOY" : `vence en ${ev.diasRestantes} días`}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Por concepto */}
                 <div className="section-premium p-5">
@@ -275,9 +358,7 @@ export default function ReportesPage() {
                             {Object.entries(kpis.porConcepto).sort((a, b) => b[1] - a[1]).map(([concepto, count]) => (
                                 <div key={concepto}>
                                     <div className="flex justify-between items-center mb-1">
-                                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${conceptoStyle[concepto] || "bg-slate-100 text-slate-600 border-slate-200"}`}>
-                                            {concepto}
-                                        </span>
+                                        <ConceptoBadge concepto={concepto} />
                                         <span className="text-sm font-bold text-slate-700">{count}</span>
                                     </div>
                                     <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">

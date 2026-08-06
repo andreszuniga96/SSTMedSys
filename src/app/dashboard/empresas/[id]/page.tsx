@@ -5,6 +5,10 @@ import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import toast from "react-hot-toast";
+import LoadingState from "@/components/dashboard/LoadingState";
+import ConceptoBadge from "@/components/dashboard/ConceptoBadge";
+import AlertaVigencia from "@/components/dashboard/AlertaVigencia";
+import { calcularVencimiento, clasificarPorVigencia } from "@/lib/vigencia";
 
 export default function DetalleEmpresaPage() {
     const params = useParams<{ id: string }>();
@@ -65,6 +69,7 @@ export default function DetalleEmpresaPage() {
                                 enfasis,
                                 fecha_actual,
                                 modalidad,
+                                vigencia_meses,
                                 certificado:certificados_aptitud (
                                     concepto_medico
                                 )
@@ -86,15 +91,6 @@ export default function DetalleEmpresaPage() {
         cargar();
     }, [id]);
 
-    const conceptoBadge = (concepto: string | undefined) => {
-        switch (concepto) {
-            case 'Apto': return "badge-green";
-            case 'No Apto': return "badge-red";
-            case 'Apto con Restricciones': return "badge-amber";
-            default: return "badge-slate";
-        }
-    };
-
     const totalExamenes = examenes.reduce((acc, e) => acc + (e.evaluaciones?.length || 0), 0);
     const trabajadores = examenes.length;
 
@@ -107,13 +103,39 @@ export default function DetalleEmpresaPage() {
         );
     });
 
+    // Vigencia: último examen con certificado por trabajador de la empresa
+    type EvalEmpresa = {
+        id?: string;
+        fecha_actual?: string | null;
+        vigencia_meses?: number | null;
+        certificado?: { concepto_medico?: string } | null;
+    };
+    const ultimosExamenes = (examenes || [])
+        .map((c) => {
+            const evaluaciones = ((c as { evaluaciones?: EvalEmpresa[] } | null)?.evaluaciones || []) as EvalEmpresa[];
+            const ultimo = evaluaciones.find((ev) => ev.certificado?.concepto_medico);
+            if (!ultimo) return null;
+            return { ...ultimo, paciente: { id: c.paciente_id, nombre_completo: c.paciente?.nombre_completo } };
+        })
+        .filter(Boolean);
+
+    const { porVencer, vencidos } = clasificarPorVigencia(ultimosExamenes);
+
+    // Estado de vigencia por trabajador (para la columna de la tabla)
+    const vigenciaPorPaciente: Record<string, { estado: "vencido" | "por_vencer" | "vigente"; dias: number }> = {};
+    ultimosExamenes.forEach((ev) => {
+        if (!ev) return;
+        const pid = ev.paciente?.id;
+        if (!pid) return;
+        const v = calcularVencimiento(ev.fecha_actual ?? "", ev.vigencia_meses);
+        if (!v) return;
+        if (v.vencido) vigenciaPorPaciente[pid] = { estado: "vencido", dias: Math.abs(v.dias) };
+        else if (v.dias <= 60) vigenciaPorPaciente[pid] = { estado: "por_vencer", dias: v.dias };
+        else vigenciaPorPaciente[pid] = { estado: "vigente", dias: v.dias };
+    });
+
     if (cargando) {
-        return (
-            <div className="text-center py-20">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
-                <p className="text-xs text-slate-500 mt-3">Cargando empresa...</p>
-            </div>
-        );
+        return <LoadingState texto="Cargando empresa..." />;
     }
 
     if (!empresa) {
@@ -173,6 +195,9 @@ export default function DetalleEmpresaPage() {
                 </div>
             </div>
 
+            {/* Alertas de vigencia de la empresa */}
+            <AlertaVigencia vencidos={vencidos} porVencer={porVencer} />
+
             {/* Historial */}
             <div className="section-premium overflow-hidden">
                 <div className="section-header section-header-blue">
@@ -203,13 +228,14 @@ export default function DetalleEmpresaPage() {
                                 <th>Cargo</th>
                                 <th>Documento</th>
                                 <th>Exámenes</th>
+                                <th>Vigencia</th>
                                 <th className="text-right">Acciones</th>
                             </tr>
                         </thead>
                         <tbody>
                             {filtrados.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="text-center py-10 text-slate-400">
+                                    <td colSpan={6} className="text-center py-10 text-slate-400">
                                         <p className="font-semibold">Sin trabajadores vinculados</p>
                                         <p className="text-xs mt-1">Los exámenes aparecerán aquí cuando se registre una evaluación con esta empresa.</p>
                                     </td>
@@ -244,12 +270,34 @@ export default function DetalleEmpresaPage() {
                                                         <span className="text-[0.7rem] text-slate-500">
                                                             {new Date(ev.fecha_actual).toLocaleDateString('es-CO')} · {ev.tipo_evaluacion}
                                                         </span>
-                                                        <span className={`badge ${conceptoBadge(ev.certificado?.concepto_medico)}`}>
-                                                            {ev.certificado?.concepto_medico || "Pendiente"}
-                                                        </span>
+                                                        <ConceptoBadge concepto={ev.certificado?.concepto_medico} />
                                                     </div>
                                                 ))}
                                             </div>
+                                        </td>
+                                        <td>
+                                            {(() => {
+                                                const v = vigenciaPorPaciente[c.paciente_id];
+                                                if (!v) return <span className="badge badge-slate">Sin certificado</span>;
+                                                if (v.estado === "vencido" || v.estado === "por_vencer") {
+                                                    return (
+                                                        <div className="flex flex-col gap-1 items-start">
+                                                            {v.estado === "vencido" ? (
+                                                                <span className="badge badge-red">Vencido hace {v.dias} día(s)</span>
+                                                            ) : (
+                                                                <span className="badge badge-amber">{v.dias === 0 ? "Vence HOY" : `Vence en ${v.dias} días`}</span>
+                                                            )}
+                                                            <Link
+                                                                href={`/dashboard/evaluaciones/nueva?paciente_id=${c.paciente_id}&empresa_id=${id}`}
+                                                                className="text-[0.65rem] font-bold text-teal-700 hover:underline"
+                                                            >
+                                                                Renovar →
+                                                            </Link>
+                                                        </div>
+                                                    );
+                                                }
+                                                return <span className="badge badge-green">Vigente</span>;
+                                            })()}
                                         </td>
                                         <td className="text-right">
                                             <Link

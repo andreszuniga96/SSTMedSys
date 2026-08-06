@@ -4,13 +4,12 @@ import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import toast from "react-hot-toast";
+import PageHeader from "@/components/dashboard/PageHeader";
+import Modal from "@/components/dashboard/Modal";
+import { fechaLocal } from "@/lib/fechas";
 
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const DIAS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
-
-// Fecha local YYYY-MM-DD (evita el desfase de UTC, relevante en Colombia UTC-5)
-const fechaLocal = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 const estadoStyle: Record<string, string> = {
     pendiente: "bg-amber-50 text-amber-700 border-amber-200",
@@ -173,25 +172,23 @@ export default function AgendaPage() {
     return (
         <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
             {/* Header */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 card-premium p-6">
-                <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-xl flex items-center justify-center text-teal-700 bg-teal-50 border border-teal-200 shrink-0">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-bold text-slate-900">Agenda de Citas</h1>
-                        <p className="text-sm text-slate-500 mt-0.5">Programación de evaluaciones médicas ocupacionales</p>
-                    </div>
-                </div>
-                <button onClick={() => setModalOpen(true)} className="btn-primary">
+            <PageHeader
+                icono={
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
-                    Nueva Cita
-                </button>
-            </div>
+                }
+                titulo="Agenda de Citas"
+                subtitulo="Programación de evaluaciones médicas ocupacionales"
+                acciones={
+                    <button onClick={() => setModalOpen(true)} className="btn-primary">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                        </svg>
+                        Nueva Cita
+                    </button>
+                }
+            />
 
             {/* Resumen del mes */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -393,18 +390,20 @@ export default function AgendaPage() {
             </div>
 
             {/* Modal nueva cita */}
-            {modalOpen && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setModalOpen(false)}>
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-                            <h3 className="font-bold text-slate-900">Nueva Cita</h3>
-                            <button onClick={() => setModalOpen(false)} className="text-slate-400 hover:text-slate-600">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                        </div>
-                        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Modal
+                abierto={modalOpen}
+                onCerrar={() => setModalOpen(false)}
+                titulo="Nueva Cita"
+                footer={
+                    <>
+                        <button onClick={() => setModalOpen(false)} className="btn-secondary">Cancelar</button>
+                        <button onClick={crearCita} disabled={guardando} className="btn-primary">
+                            {guardando ? "Agendando..." : "Agendar cita"}
+                        </button>
+                    </>
+                }
+            >
+                <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="md:col-span-2">
                                 <label className="label-premium">Paciente *</label>
                                 <select className="select-premium" value={form.paciente_id} onChange={(e) => setForm({ ...form, paciente_id: e.target.value })}>
@@ -442,16 +441,8 @@ export default function AgendaPage() {
                                 <label className="label-premium">Notas</label>
                                 <textarea rows={2} className="input-premium" placeholder="Indicaciones, exámenes solicitados, etc." value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} />
                             </div>
-                        </div>
-                        <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
-                            <button onClick={() => setModalOpen(false)} className="btn-secondary">Cancelar</button>
-                            <button onClick={crearCita} disabled={guardando} className="btn-primary">
-                                {guardando ? "Agendando..." : "Agendar cita"}
-                            </button>
-                        </div>
-                    </div>
                 </div>
-            )}
+            </Modal>
         </div>
     );
 }
