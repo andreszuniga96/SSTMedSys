@@ -17,8 +17,17 @@ interface WebcamCaptureProps {
     selectorCamaras?: boolean;
 }
 
-/** Altura mínima que consideramos "suficiente" para no buscar una cámara mejor (900p < 1080p). */
-const ALTURA_MINIMA_PREFERIDA = 900;
+/** Clave en localStorage donde se recuerda la cámara elegida manualmente por el usuario. */
+const CLAVE_CAMARA_PREFERIDA = "webcamPreferida";
+
+/** Máximo de auto-recuperaciones del video congelado antes de mostrar el error con Reintentar. */
+const MAX_AUTO_RECUPERACIONES = 3;
+
+/** Tiempo (ms) sin recibir un frame para considerar el video congelado. */
+const TIMEOUT_VIDEO_CONGELADO = 3500;
+
+/** Tiempo (ms) de espera inicial para que el video entregue el primer frame. */
+const TIMEOUT_PRIMER_FRAME = 5000;
 
 /**
  * Traduce un error de getUserMedia a un mensaje claro y accionable.
@@ -47,15 +56,34 @@ function mensajeErrorCamara(err: unknown): string {
     }
 }
 
+/** ¿Estamos en un dispositivo móvil (teléfono/tableta)? Allí la selfie debe usar la cámara frontal. */
+function esDispositivoMovil(): boolean {
+    if (typeof navigator === "undefined") return false;
+    try {
+        return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+    } catch {
+        return false;
+    }
+}
+
 const WebcamCapture = forwardRef<WebcamCaptureRef, WebcamCaptureProps>(
     ({ className, onError, onReady, selectorCamaras = true }, ref) => {
         const webcamRef = useRef<Webcam>(null);
         const [camaras, setCamaras] = useState<MediaDeviceInfo[]>([]);
-        const [deviceId, setDeviceId] = useState<string | null>(null);
+        // En escritorio sin cámara elegida NO se usa facingMode: Chrome elige la cámara de
+        // mayor resolución (la webcam externa 1080p) en lugar de la integrada a 720p.
+        const [deviceId, setDeviceId] = useState<string | null>(() => {
+            if (typeof window === "undefined") return null;
+            try {
+                return window.localStorage.getItem(CLAVE_CAMARA_PREFERIDA) || null;
+            } catch {
+                return null;
+            }
+        });
         const [error, setError] = useState<string | null>(null);
         const [intento, setIntento] = useState(0);
-        const eleccionManualRef = useRef(false);
-        const autoSeleccionadaRef = useRef(false);
+        const recuperacionesRef = useRef(0);
+        const watchdogRef = useRef<number | null>(null);
 
         const marcarError = useCallback(
             (mensaje: string) => {
@@ -77,7 +105,13 @@ const WebcamCapture = forwardRef<WebcamCaptureRef, WebcamCaptureProps>(
             navigator.mediaDevices
                 .enumerateDevices()
                 .then((dispositivos) => {
-                    setCamaras(dispositivos.filter((d) => d.kind === "videoinput"));
+                    const videos = dispositivos.filter((d) => d.kind === "videoinput");
+                    setCamaras(videos);
+                    // Si la cámara guardada ya no está conectada, olvidarla (el constraint
+                    // es { ideal }, así que Chrome igual abre otra cámara sin error).
+                    setDeviceId((actual) =>
+                        actual && videos.length > 0 && !videos.some((v) => v.deviceId === actual) ? null : actual
+                    );
                 })
                 .catch(() => {
                     /* sin consecuencias: el selector se llenará cuando la cámara arranque */
@@ -88,54 +122,75 @@ const WebcamCapture = forwardRef<WebcamCaptureRef, WebcamCaptureProps>(
             listarCamaras();
         }, [listarCamaras]);
 
-        /**
-         * Elige automáticamente la mejor cámara (la de mayor resolución) cuando hay varias.
-         * El navegador por defecto suele quedarse con la integrada del portátil (a 720p),
-         * ignorando una webcam externa 1080p; aquí probamos cada cámara y nos quedamos
-         * con la que entregue la resolución más alta. Solo se ejecuta tras otorgar el
-         * permiso (primera vez que el stream arranca) y si el usuario no eligió manualmente.
-         */
-        const elegirMejorCamara = useCallback(async () => {
-            if (eleccionManualRef.current) return;
-            eleccionManualRef.current = true; // evita reintentos mientras se prueba
+        const guardarCamaraPreferida = useCallback((id: string | null) => {
             try {
-                if (typeof navigator === "undefined" || !navigator.mediaDevices?.enumerateDevices) return;
-                const camarasDisponibles = (await navigator.mediaDevices.enumerateDevices()).filter(
-                    (d) => d.kind === "videoinput"
-                );
-                if (camarasDisponibles.length < 2) return;
-                const resultados = await Promise.all(
-                    camarasDisponibles.map(async (cam) => {
-                        try {
-                            const stream = await navigator.mediaDevices.getUserMedia({
-                                video: {
-                                    deviceId: { exact: cam.deviceId },
-                                    width: { ideal: 1920 },
-                                    height: { ideal: 1080 },
-                                },
-                                audio: false,
-                            });
-                            const settings = stream.getVideoTracks()[0].getSettings();
-                            stream.getTracks().forEach((t) => t.stop());
-                            return { deviceId: cam.deviceId, area: (settings.width || 0) * (settings.height || 0) };
-                        } catch {
-                            return { deviceId: cam.deviceId, area: 0 };
-                        }
-                    })
-                );
-                const mejor = resultados.reduce((a, b) => (b.area > a.area ? b : a));
-                if (mejor.area > 0) {
-                    // Esperar a que Windows libere la cámara probada antes de abrirla de nuevo
-                    await new Promise((r) => setTimeout(r, 500));
-                    autoSeleccionadaRef.current = true;
-                    setDeviceId(mejor.deviceId);
-                }
+                if (id) window.localStorage.setItem(CLAVE_CAMARA_PREFERIDA, id);
+                else window.localStorage.removeItem(CLAVE_CAMARA_PREFERIDA);
             } catch {
-                // Sin permiso todavía o error de navegador: mantener la cámara por defecto
-            } finally {
-                eleccionManualRef.current = false;
+                /* almacenamiento no disponible: sin consecuencias */
             }
         }, []);
+
+        /**
+         * Watchdog anti-congelamiento: si el video tiene un stream live pero NO entrega
+         * frames (readyState 0 o sin frame durante TIMEOUT_VIDEO_CONGELADO), se remonta
+         * el <Webcam> automáticamente para forzar un nuevo getUserMedia. Con un máximo
+         * de intentos para no quedar en bucle infinito.
+         */
+        const detenerWatchdog = useCallback(() => {
+            if (watchdogRef.current !== null) {
+                window.clearTimeout(watchdogRef.current);
+                watchdogRef.current = null;
+            }
+        }, []);
+
+        const iniciarWatchdog = useCallback(() => {
+            detenerWatchdog();
+            const video = webcamRef.current?.video;
+            if (!video) return;
+            const inicio = Date.now();
+
+            const recuperar = () => {
+                if (recuperacionesRef.current >= MAX_AUTO_RECUPERACIONES) {
+                    marcarError("La cámara dejó de responder. Pulse Reintentar cámara.");
+                    return;
+                }
+                recuperacionesRef.current += 1;
+                detenerWatchdog();
+                setIntento((i) => i + 1); // remonta el <Webcam>: nuevo getUserMedia
+            };
+
+            const vigilar = () => {
+                // No vigilar en pestañas ocultas ni si la página perdió el stream
+                if (document.visibilityState !== "visible" || !video.srcObject) return;
+
+                if (video.readyState >= 2 && video.videoWidth > 0) {
+                    // Los frames fluyen si currentTime avanza (señal confiable en todos
+                    // los navegadores; requestVideoFrameCallback no dispara en algunos
+                    // entornos embebidos aunque el video se esté reproduciendo).
+                    const t0 = video.currentTime;
+                    watchdogRef.current = window.setTimeout(() => {
+                        if (video.currentTime !== t0) {
+                            recuperacionesRef.current = 0; // frames fluyendo: reiniciar contador
+                            vigilar(); // sigue fluyendo: vigilar de nuevo
+                        } else {
+                            recuperar(); // congelado: remontar la cámara
+                        }
+                    }, TIMEOUT_VIDEO_CONGELADO);
+                } else {
+                    // El video aún no entrega el primer frame
+                    if (Date.now() - inicio > TIMEOUT_PRIMER_FRAME) {
+                        recuperar();
+                    } else {
+                        watchdogRef.current = window.setTimeout(vigilar, 500);
+                    }
+                }
+            };
+
+            vigilar();
+        }, [detenerWatchdog, marcarError]);
+
+        useEffect(() => detenerWatchdog, [detenerWatchdog]);
 
         useImperativeHandle(
             ref,
@@ -148,10 +203,15 @@ const WebcamCapture = forwardRef<WebcamCaptureRef, WebcamCaptureProps>(
             [error]
         );
 
+        const esMovil = esDispositivoMovil();
         const videoConstraints = {
             width: { ideal: 1920 },
             height: { ideal: 1080 },
-            ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: "user" }),
+            ...(deviceId
+                ? { deviceId: { ideal: deviceId } }
+                : esMovil
+                ? { facingMode: "user" }
+                : {}),
         };
 
         if (error) {
@@ -163,6 +223,7 @@ const WebcamCapture = forwardRef<WebcamCaptureRef, WebcamCaptureProps>(
                         type="button"
                         onClick={() => {
                             setError(null);
+                            recuperacionesRef.current = 0;
                             setIntento((i) => i + 1); // remonta el Webcam y reintenta getUserMedia
                         }}
                         className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-[0.65rem] font-semibold"
@@ -182,27 +243,21 @@ const WebcamCapture = forwardRef<WebcamCaptureRef, WebcamCaptureProps>(
                     screenshotFormat="image/jpeg"
                     forceScreenshotSourceSize
                     videoConstraints={videoConstraints}
-                    onUserMedia={(stream) => {
-                        // La cámara arrancó: limpiar errores, refrescar el selector y buscar la mejor (1080p)
+                    onUserMedia={() => {
+                        // La cámara arrancó: limpiar errores, refrescar el selector y vigilar
+                        // que el video entregue frames (watchdog anti-congelamiento).
                         setError(null);
                         onReady?.();
                         listarCamaras();
-                        const altura = stream.getVideoTracks()[0].getSettings().height || 0;
-                        if (altura < ALTURA_MINIMA_PREFERIDA) {
-                            void elegirMejorCamara();
-                        }
+                        iniciarWatchdog();
                     }}
                     onUserMediaError={(err) => {
                         const nombre = (err as DOMException)?.name || "";
-                        // Resolución no soportada por la cámara elegida: volver a la predeterminada
-                        if (nombre === "OverconstrainedError" && deviceId) {
+                        if (nombre === "OverconstrainedError") {
+                            // La cámara guardada no soporta la resolución pedida: olvidarla y reintentar
+                            guardarCamaraPreferida(null);
                             setDeviceId(null);
-                            return;
-                        }
-                        // Si la cámara auto-seleccionada falló, volver a la del navegador por defecto
-                        if (autoSeleccionadaRef.current && !eleccionManualRef.current) {
-                            autoSeleccionadaRef.current = false;
-                            setDeviceId(null);
+                            setIntento((i) => i + 1);
                             return;
                         }
                         marcarError(mensajeErrorCamara(err));
@@ -214,9 +269,9 @@ const WebcamCapture = forwardRef<WebcamCaptureRef, WebcamCaptureProps>(
                     <select
                         value={deviceId || ""}
                         onChange={(e) => {
-                            eleccionManualRef.current = true;
-                            autoSeleccionadaRef.current = false;
-                            setDeviceId(e.target.value || null);
+                            const id = e.target.value || null;
+                            setDeviceId(id);
+                            guardarCamaraPreferida(id);
                         }}
                         className="absolute bottom-1 right-1 text-[0.6rem] bg-black/70 text-white rounded-md px-1.5 py-0.5 border border-white/20 max-w-[70%]"
                         title="Cambiar cámara"
