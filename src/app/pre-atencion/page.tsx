@@ -1,10 +1,17 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import Webcam from "react-webcam";
+import dynamic from "next/dynamic";
+import WebcamCapture, { type WebcamCaptureRef } from "@/components/WebcamCapture";
+import type { SignaturePadRef } from "@/components/SignaturePad";
 import imageCompression from "browser-image-compression";
 import { createClient } from "@/lib/supabase/client";
 import toast from "react-hot-toast";
+
+const SignaturePad = dynamic(() => import("@/components/SignaturePad"), {
+    ssr: false,
+    loading: () => <div className="h-52 w-full shimmer rounded-lg" />,
+});
 
 const leerParametrosIniciales = () => {
     if (typeof window === "undefined") return {};
@@ -27,7 +34,8 @@ const leerParametrosIniciales = () => {
 
 export default function PortalPreAtencion() {
     const supabase = createClient();
-    const webcamRef = useRef<Webcam>(null);
+    const webcamRef = useRef<WebcamCaptureRef>(null);
+    const firmaPadRef = useRef<SignaturePadRef>(null);
 
     const [paso, setPaso] = useState(1);
     const [loading, setLoading] = useState(false);
@@ -69,6 +77,8 @@ export default function PortalPreAtencion() {
     const [cedulaFoto, setCedulaFoto] = useState<string | null>(null);
     const [selfieFoto, setSelfieFoto] = useState<string | null>(null);
     const [firmaFoto, setFirmaFoto] = useState<string | null>(null);
+    const [modoFirmaPortal, setModoFirmaPortal] = useState<"foto" | "pad">("foto");
+    const [selfieError, setSelfieError] = useState<string | null>(null);
     const [examenesFotos, setExamenesFotos] = useState<string[]>([]);
     const [comprobantePago, setComprobantePago] = useState<string | null>(null);
 
@@ -98,10 +108,12 @@ export default function PortalPreAtencion() {
     };
 
     const capturarSelfie = () => {
-        const src = webcamRef.current?.getScreenshot();
+        const src = webcamRef.current?.capture();
         if (src) {
             setSelfieFoto(src);
             setTomandoSelfie(false);
+        } else {
+            toast.error("No se pudo capturar. Verifique el permiso de la cámara.");
         }
     };
 
@@ -131,15 +143,16 @@ export default function PortalPreAtencion() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        const firmaParaSubir = modoFirmaPortal === "pad" ? (firmaPadRef.current?.getSignature() || null) : firmaFoto;
         if (!nombre || !cedula) return toast.error("Por favor complete su nombre y número de cédula.");
-        if (!cedulaFoto || !firmaFoto) return toast.error("Por favor adjunte la foto de su cédula y la foto de su firma.");
+        if (!cedulaFoto || !firmaParaSubir) return toast.error("Por favor adjunte la foto de su cédula y su firma (foto o en pantalla).");
 
         setLoading(true);
         try {
             // Upload images
             const cedulaUrl = await subirArchivo(cedulaFoto, "cedula");
             const selfieUrl = selfieFoto ? await subirArchivo(selfieFoto, "selfie") : null;
-            const firmaUrl = await subirArchivo(firmaFoto, "firma");
+            const firmaUrl = await subirArchivo(firmaParaSubir, "firma");
             const examenesUrls: string[] = [];
             for (const examen of examenesFotos) {
                 const esImg = examen.startsWith("data:image");
@@ -428,8 +441,11 @@ export default function PortalPreAtencion() {
                                 {tomandoSelfie ? (
                                     <div className="space-y-2">
                                         <div className="h-48 bg-black rounded-xl overflow-hidden relative">
-                                            <Webcam audio={false} ref={webcamRef} screenshotFormat="image/jpeg" className="w-full h-full object-cover" />
+                                            <WebcamCapture ref={webcamRef} className="w-full h-full object-cover" onError={setSelfieError} onReady={() => setSelfieError(null)} />
                                         </div>
+                                        {selfieError && (
+                                            <p className="text-[0.65rem] text-red-600">{selfieError} También puede subirla desde la galería.</p>
+                                        )}
                                         <button type="button" onClick={capturarSelfie} className="w-full py-2 bg-emerald-600 text-white text-xs font-bold rounded-lg">
                                             📸 Capturar Foto
                                         </button>
@@ -477,18 +493,38 @@ export default function PortalPreAtencion() {
                                 Paso 3: Firma y Documentos
                             </h3>
 
-                            {/* Foto Firma */}
+                            {/* Firma del trabajador */}
                             <div>
-                                <label className="block text-xs font-medium text-slate-600 mb-1">3. Foto de Firma manuscrita en papel blanco *</label>
-                                <p className="text-[0.65rem] text-slate-500 mb-2">Firme con lapicero negro/azul en un papel blanco y tómale una foto clara</p>
-                                <label className="flex flex-col items-center justify-center h-32 border-2 border-dashed border-slate-300 hover:border-teal-500 rounded-xl cursor-pointer bg-slate-50 overflow-hidden transition-colors">
-                                    {firmaFoto ? (
-                                        <img src={firmaFoto} alt="Firma" className="h-full object-contain" />
-                                    ) : (
-                                        <span className="text-xs text-slate-500 text-center p-2">✍️ Toca para tomar o subir foto de tu firma</span>
-                                    )}
-                                    <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => handleFileUpload(e, setFirmaFoto)} />
-                                </label>
+                                <label className="block text-xs font-medium text-slate-600 mb-1">3. Firma del trabajador *</label>
+                                <p className="text-[0.65rem] text-slate-500 mb-2">Firme con lapicero en un papel blanco y tómale una foto, o firme directamente en pantalla</p>
+                                <div className="flex gap-2 mb-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setModoFirmaPortal("foto")}
+                                        className={`px-3 py-1.5 rounded-lg text-[0.65rem] font-bold ${modoFirmaPortal === "foto" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-600"}`}
+                                    >
+                                        📷 Foto de la firma
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setModoFirmaPortal("pad")}
+                                        className={`px-3 py-1.5 rounded-lg text-[0.65rem] font-bold ${modoFirmaPortal === "pad" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-600"}`}
+                                    >
+                                        ✍️ Firmar en pantalla
+                                    </button>
+                                </div>
+                                {modoFirmaPortal === "pad" ? (
+                                    <SignaturePad ref={firmaPadRef} />
+                                ) : (
+                                    <label className="flex flex-col items-center justify-center h-32 border-2 border-dashed border-slate-300 hover:border-teal-500 rounded-xl cursor-pointer bg-slate-50 overflow-hidden transition-colors">
+                                        {firmaFoto ? (
+                                            <img src={firmaFoto} alt="Firma" className="h-full object-contain" />
+                                        ) : (
+                                            <span className="text-xs text-slate-500 text-center p-2">✍️ Toca para tomar o subir foto de tu firma</span>
+                                        )}
+                                        <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => handleFileUpload(e, setFirmaFoto)} />
+                                    </label>
+                                )}
                             </div>
 
                             {/* Exámenes Previos (Opcional) */}

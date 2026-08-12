@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import Webcam from "react-webcam";
+import WebcamCapture, { type WebcamCaptureRef } from "@/components/WebcamCapture";
 import imageCompression from "browser-image-compression";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
@@ -15,7 +15,8 @@ interface PacienteFormProps {
 
 export default function PacienteForm({ pacienteInicial, isEditing = false }: PacienteFormProps) {
     const router = useRouter();
-    const webcamRef = useRef<Webcam>(null);
+    const webcamRef = useRef<WebcamCaptureRef>(null);
+    const fotoFileRef = useRef<HTMLInputElement>(null);
 
     const [formData, setFormData] = useState({
         nombre_completo: pacienteInicial?.nombre_completo || "",
@@ -58,13 +59,27 @@ export default function PacienteForm({ pacienteInicial, isEditing = false }: Pac
     }, [peso, estatura]);
 
     const [capturaFoto, setCapturaFoto] = useState<string | null>(pacienteInicial?.foto_url || null);
+    const [webcamError, setWebcamError] = useState<string | null>(null);
     const [guardando, setGuardando] = useState(false);
 
     const capturarFoto = () => {
-        const imageSrc = webcamRef.current?.getScreenshot();
+        const imageSrc = webcamRef.current?.capture();
         if (imageSrc) {
             setCapturaFoto(imageSrc);
+        } else {
+            toast.error("La cámara no está disponible. Verifique permisos o suba una foto.");
         }
+    };
+
+    const handleFotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            setCapturaFoto(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+        e.target.value = "";
     };
 
     const updateField = (field: string, value: string) => {
@@ -214,10 +229,11 @@ export default function PacienteForm({ pacienteInicial, isEditing = false }: Pac
                 <div className="section-body flex flex-col md:flex-row items-center gap-6">
                     <div className="w-40 h-40 bg-slate-900 rounded-2xl overflow-hidden relative flex-shrink-0 shadow-inner border-2 border-slate-200">
                         {!capturaFoto ? (
-                            <Webcam audio={false} ref={webcamRef} screenshotFormat="image/jpeg" className="w-full h-full object-cover" />
+                            <WebcamCapture ref={webcamRef} className="w-full h-full object-cover" onError={setWebcamError} onReady={() => setWebcamError(null)} />
                         ) : (
                             <img src={capturaFoto} alt="Foto Paciente" className="w-full h-full object-cover" />
                         )}
+                        <input ref={fotoFileRef} type="file" accept="image/*" className="hidden" onChange={handleFotoUpload} />
                     </div>
                     <div className="space-y-3 text-center md:text-left">
                         <p className="text-xs text-slate-600 max-w-md">
@@ -225,9 +241,16 @@ export default function PacienteForm({ pacienteInicial, isEditing = false }: Pac
                         </p>
                         <div className="flex flex-wrap gap-3 justify-center md:justify-start">
                             {!capturaFoto ? (
-                                <button type="button" onClick={capturarFoto} className="btn-primary text-xs">
-                                    📸 Tomar Fotografía
-                                </button>
+                                <>
+                                    <button type="button" onClick={capturarFoto} className="btn-primary text-xs">
+                                        📸 Tomar Fotografía
+                                    </button>
+                                    {webcamError && (
+                                        <button type="button" onClick={() => fotoFileRef.current?.click()} className="btn-secondary text-xs">
+                                            📁 Subir foto del trabajador
+                                        </button>
+                                    )}
+                                </>
                             ) : (
                                 <button type="button" onClick={() => setCapturaFoto(null)} className="btn-danger text-xs">
                                     🔄 Repetir Fotografía
