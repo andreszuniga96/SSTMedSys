@@ -239,6 +239,9 @@ export default function PacienteForm({ pacienteInicial, isEditing = false }: Pac
                         <p className="text-xs text-slate-600 max-w-md">
                             Asegúrese de que el trabajador esté enfocado adecuadamente antes de tomar la fotografía biométrica.
                         </p>
+                        {webcamError && (
+                            <p className="text-[0.65rem] text-red-600 max-w-md">{webcamError}</p>
+                        )}
                         <div className="flex flex-wrap gap-3 justify-center md:justify-start">
                             {!capturaFoto ? (
                                 <>

@@ -20,6 +20,33 @@ interface WebcamCaptureProps {
 /** Altura mínima que consideramos "suficiente" para no buscar una cámara mejor (900p < 1080p). */
 const ALTURA_MINIMA_PREFERIDA = 900;
 
+/**
+ * Traduce un error de getUserMedia a un mensaje claro y accionable.
+ * Los nombres siguen la especificación de MediaDevices:
+ * - NotAllowedError: permiso denegado/bloqueado
+ * - NotFoundError: no hay dispositivo de video
+ * - NotReadableError: dispositivo ocupado por otra app/pestaña (Windows solo permite un usuario)
+ * - OverconstrainedError: la cámara no soporta la resolución solicitada
+ */
+function mensajeErrorCamara(err: unknown): string {
+    const nombre = (err as DOMException)?.name || (err as Error)?.name || "";
+    switch (nombre) {
+        case "NotAllowedError":
+        case "PermissionDeniedError":
+        case "SecurityError":
+            return "El permiso de la cámara está bloqueado. Haga clic en el icono 🔒 de la barra de direcciones, permita el acceso a la cámara y pulse Reintentar.";
+        case "NotFoundError":
+        case "DevicesNotFoundError":
+            return "No se encontró ninguna cámara conectada. Conecte su webcam y pulse Reintentar.";
+        case "NotReadableError":
+        case "TrackStartError":
+        case "AbortError":
+            return "La cámara está siendo usada por otra aplicación o pestaña. Ciérrela e intente de nuevo.";
+        default:
+            return "No se pudo iniciar la cámara. Verifique que el permiso no esté bloqueado y que la webcam esté conectada, luego pulse Reintentar.";
+    }
+}
+
 const WebcamCapture = forwardRef<WebcamCaptureRef, WebcamCaptureProps>(
     ({ className, onError, onReady, selectorCamaras = true }, ref) => {
         const webcamRef = useRef<Webcam>(null);
@@ -38,26 +65,28 @@ const WebcamCapture = forwardRef<WebcamCaptureRef, WebcamCaptureProps>(
             [onError]
         );
 
+        /**
+         * Actualiza SOLO la lista del selector de cámaras.
+         * Nunca bloquea la cámara ni muestra error: antes de otorgar permiso,
+         * enumerateDevices() puede devolver 0 dispositivos (Firefox y algunos
+         * navegadores) y eso NO debe impedir intentar abrir la cámara — solo
+         * getUserMedia dispara el prompt de permiso del navegador.
+         */
         const listarCamaras = useCallback(() => {
-            if (typeof navigator === "undefined" || !navigator.mediaDevices?.enumerateDevices) {
-                marcarError("Este sitio no puede acceder a la cámara (requiere HTTPS o permisos del navegador).");
-                return;
-            }
+            if (typeof navigator === "undefined" || !navigator.mediaDevices?.enumerateDevices) return;
             navigator.mediaDevices
                 .enumerateDevices()
                 .then((dispositivos) => {
-                    const video = dispositivos.filter((d) => d.kind === "videoinput");
-                    setCamaras(video);
-                    if (video.length === 0) {
-                        marcarError("No se encontró ninguna cámara conectada. Conecte su webcam y pulse Reintentar.");
-                    } else {
-                        setError(null);
-                    }
+                    setCamaras(dispositivos.filter((d) => d.kind === "videoinput"));
                 })
                 .catch(() => {
-                    marcarError("No se pudieron consultar las cámaras disponibles.");
+                    /* sin consecuencias: el selector se llenará cuando la cámara arranque */
                 });
-        }, [marcarError]);
+        }, []);
+
+        useEffect(() => {
+            listarCamaras();
+        }, [listarCamaras]);
 
         /**
          * Elige automáticamente la mejor cámara (la de mayor resolución) cuando hay varias.
@@ -108,10 +137,6 @@ const WebcamCapture = forwardRef<WebcamCaptureRef, WebcamCaptureProps>(
             }
         }, []);
 
-        useEffect(() => {
-            listarCamaras();
-        }, [listarCamaras, intento]);
-
         useImperativeHandle(
             ref,
             () => ({
@@ -136,7 +161,10 @@ const WebcamCapture = forwardRef<WebcamCaptureRef, WebcamCaptureProps>(
                     <p className="text-[0.65rem] text-red-300 leading-snug">{error}</p>
                     <button
                         type="button"
-                        onClick={() => setIntento((i) => i + 1)}
+                        onClick={() => {
+                            setError(null);
+                            setIntento((i) => i + 1); // remonta el Webcam y reintenta getUserMedia
+                        }}
                         className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-[0.65rem] font-semibold"
                     >
                         🔄 Reintentar cámara
@@ -148,33 +176,36 @@ const WebcamCapture = forwardRef<WebcamCaptureRef, WebcamCaptureProps>(
         return (
             <div className="relative w-full h-full">
                 <Webcam
-                    key={deviceId || "default"}
+                    key={`${deviceId || "default"}-${intento}`}
                     audio={false}
                     ref={webcamRef}
                     screenshotFormat="image/jpeg"
                     forceScreenshotSourceSize
                     videoConstraints={videoConstraints}
                     onUserMedia={(stream) => {
-                        // Tras otorgar permiso: refrescar etiquetas y buscar la mejor cámara (1080p)
-                        listarCamaras();
+                        // La cámara arrancó: limpiar errores, refrescar el selector y buscar la mejor (1080p)
+                        setError(null);
                         onReady?.();
-                        const track = stream.getVideoTracks()[0];
-                        const altura = track.getSettings().height || 0;
+                        listarCamaras();
+                        const altura = stream.getVideoTracks()[0].getSettings().height || 0;
                         if (altura < ALTURA_MINIMA_PREFERIDA) {
-                            // La cámara activa es de baja resolución: ver si hay una mejor
                             void elegirMejorCamara();
                         }
                     }}
                     onUserMediaError={(err) => {
+                        const nombre = (err as DOMException)?.name || "";
+                        // Resolución no soportada por la cámara elegida: volver a la predeterminada
+                        if (nombre === "OverconstrainedError" && deviceId) {
+                            setDeviceId(null);
+                            return;
+                        }
                         // Si la cámara auto-seleccionada falló, volver a la del navegador por defecto
                         if (autoSeleccionadaRef.current && !eleccionManualRef.current) {
                             autoSeleccionadaRef.current = false;
                             setDeviceId(null);
                             return;
                         }
-                        marcarError(
-                            "No se pudo iniciar la cámara. Verifique que el permiso no esté bloqueado y que la webcam esté libre."
-                        );
+                        marcarError(mensajeErrorCamara(err));
                         console.error("Error iniciando la cámara:", err);
                     }}
                     className={className}
