@@ -325,10 +325,17 @@ export default function NuevaEvaluacion() {
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ evaluacion_id: evaluacion.id }),
                         });
-                        const data = await res.json();
+                        let data: { error?: string; message?: string } = {};
+                        try {
+                            data = await res.json();
+                        } catch {
+                            data = { error: "Error del servidor (HTTP " + res.status + "). Intente de nuevo." };
+                        }
                         toast.dismiss("enviando-cert");
                         if (res.ok) {
                             toast.success(data?.message || "✅ Certificado enviado por correo.");
+                        } else if (/RESEND_API_KEY/i.test(data?.error || "")) {
+                            toast.error("⚠️ El envío de correos no está configurado: agregue RESEND_API_KEY en .env.local (o en Vercel) y reinicie.");
                         } else {
                             toast.error(data?.error || "No se pudo enviar el certificado.");
                         }
@@ -687,6 +694,36 @@ export default function NuevaEvaluacion() {
                             <div>
                                 <label className="label-premium">Hallazgos Examen Físico *</label>
                                 <textarea required rows={4} className="input-premium" value={formData.hallazgos_examen_fisico} onChange={(e) => setFormData({ ...formData, hallazgos_examen_fisico: e.target.value })} placeholder="Sistemas evaluados, tensión arterial, frecuencia cardíaca..." />
+                            </div>
+                            <div>
+                                <label className="label-premium">Riesgos Ocupacionales Identificados</label>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-2">
+                                    {[
+                                        { key: "fisico", label: "🌡️ Físico", desc: "Ruido, vibración, temperatura, radiación" },
+                                        { key: "mecanico", label: "⚙️ Mecánico", desc: "Golpes, cortes, atrapamientos" },
+                                        { key: "quimico", label: "🧪 Químico", desc: "Polvos, gases, vapores, líquidos" },
+                                        { key: "biologico", label: "🦠 Biológico", desc: "Virus, bacterias, hongos" },
+                                        { key: "ergonomico", label: "💪 Ergonómico", desc: "Posturas forzadas, sobreesfuerzo" },
+                                        { key: "psicosocial", label: "🧠 Psicosocial", desc: "Estrés, carga mental, turnos" },
+                                    ].map(({ key, label, desc }) => (
+                                        <label key={key} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                                            formData.riesgos_ocupacionales[key as keyof typeof formData.riesgos_ocupacionales]
+                                                ? "bg-red-50 border-red-300"
+                                                : "bg-slate-50 border-slate-200 hover:border-slate-300"
+                                        }`}>
+                                            <input
+                                                type="checkbox"
+                                                className="mt-0.5 w-4 h-4 text-red-600 rounded shrink-0"
+                                                checked={formData.riesgos_ocupacionales[key as keyof typeof formData.riesgos_ocupacionales]}
+                                                onChange={() => handleRiesgoChange(key)}
+                                            />
+                                            <div>
+                                                <p className="text-xs font-bold text-slate-800">{label}</p>
+                                                <p className="text-[0.65rem] text-slate-500 mt-0.5">{desc}</p>
+                                            </div>
+                                        </label>
+                                    ))}
+                                </div>
                             </div>
                         </div>
                     </div>

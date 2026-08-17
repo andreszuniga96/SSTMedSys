@@ -594,6 +594,13 @@ export default function PacientesPage() {
                                                     </button>
                                                 )}
                                                 <Link
+                                                    href={`/dashboard/pacientes/${p.id}`}
+                                                    className="p-1.5 text-teal-600 hover:bg-teal-50 rounded-lg text-xs font-semibold inline-block"
+                                                    title="Ver Perfil Completo del Paciente"
+                                                >
+                                                    🏥 Perfil
+                                                </Link>
+                                                <Link
                                                     href={`/dashboard/pacientes/${p.id}/editar`}
                                                     className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg text-xs font-semibold inline-block"
                                                     title="Editar Paciente"
@@ -719,7 +726,7 @@ export default function PacientesPage() {
             {/* MODAL FICHA TÉCNICA DEL PACIENTE */}
             {modalFichaOpen && pacienteSeleccionado && (
                 <div className="modal-overlay" onClick={() => setModalFichaOpen(false)}>
-                    <div className="modal-content max-w-2xl" onClick={(e) => e.stopPropagation()}>
+                    <div className="modal-content max-w-3xl" onClick={(e) => e.stopPropagation()}>
                         <div className="p-6 border-b border-slate-200 flex justify-between items-center">
                             <div className="flex items-center gap-3">
                                 <span className="text-2xl">📋</span>
@@ -733,15 +740,15 @@ export default function PacientesPage() {
                         <div className="p-6 space-y-6">
                             <div className="flex gap-4 items-center p-4 bg-slate-50 rounded-2xl border border-slate-200">
                                 {pacienteSeleccionado.foto_url ? (
-                                    <img src={pacienteSeleccionado.foto_url} alt="" className="w-16 h-16 rounded-full object-cover border-2 border-blue-500 shadow" />
+                                    <img src={pacienteSeleccionado.foto_url} alt="" className="w-16 h-16 rounded-full object-cover border-2 border-blue-500 shadow flex-shrink-0" />
                                 ) : (
-                                    <div className="w-16 h-16 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xl shadow">
+                                    <div className="w-16 h-16 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xl shadow flex-shrink-0">
                                         {pacienteSeleccionado.nombre_completo?.charAt(0)}
                                     </div>
                                 )}
-                                <div>
-                                    <h4 className="font-bold text-slate-900 text-base">{pacienteSeleccionado.nombre_completo}</h4>
-                                    <p className="text-xs text-slate-500">{pacienteSeleccionado.tipo_documento || "CC"} {pacienteSeleccionado.documento_identidad}</p>
+                                <div className="min-w-0">
+                                    <h4 className="font-bold text-slate-900 text-base break-words">{pacienteSeleccionado.nombre_completo}</h4>
+                                    <p className="text-xs text-slate-500 break-words">{pacienteSeleccionado.tipo_documento || "CC"} {pacienteSeleccionado.documento_identidad}</p>
                                     <p className="text-xs font-semibold text-blue-700 mt-1">{pacienteSeleccionado.profesion || "Sin cargo especificado"}</p>
                                     {esVirtual(pacienteSeleccionado) && (
                                         <p className="text-[0.65rem] font-semibold text-purple-600 bg-purple-50 border border-purple-200 rounded-full px-2 py-0.5 inline-block mt-1">
@@ -752,66 +759,66 @@ export default function PacientesPage() {
                             </div>
 
                             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-xs">
-                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1 min-w-0">
                                     <p className="text-slate-400 font-semibold uppercase text-[0.65rem]">Fecha Nacimiento</p>
-                                    <p className="font-bold text-slate-800">{pacienteSeleccionado.fecha_nacimiento || "N/R"}</p>
+                                    <p className="font-bold text-slate-800 break-words">{pacienteSeleccionado.fecha_nacimiento || "N/R"}</p>
                                 </div>
-                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1 min-w-0">
                                     <p className="text-slate-400 font-semibold uppercase text-[0.65rem]">Género</p>
-                                    <p className="font-bold text-slate-800">{pacienteSeleccionado.genero || "N/R"}</p>
+                                    <p className="font-bold text-slate-800 break-words">{pacienteSeleccionado.genero || "N/R"}</p>
                                 </div>
-                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1 min-w-0">
                                     <p className="text-slate-400 font-semibold uppercase text-[0.65rem]">Estado Civil</p>
-                                    <p className="font-bold text-slate-800">{pacienteSeleccionado.estado_civil || "N/R"}</p>
+                                    <p className="font-bold text-slate-800 break-words">{pacienteSeleccionado.estado_civil || "N/R"}</p>
                                 </div>
-                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1 min-w-0">
                                     <p className="text-slate-400 font-semibold uppercase text-[0.65rem]">Nivel Educativo</p>
-                                    <p className="font-bold text-slate-800">{pacienteSeleccionado.escolaridad || "N/R"}</p>
+                                    <p className="font-bold text-slate-800 break-words">{pacienteSeleccionado.escolaridad || "N/R"}</p>
                                 </div>
-                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1 min-w-0">
                                     <p className="text-slate-400 font-semibold uppercase text-[0.65rem]">Teléfono Celular</p>
-                                    <p className="font-bold text-slate-800">{pacienteSeleccionado.movil || "N/R"}</p>
+                                    <p className="font-bold text-slate-800 break-words">{pacienteSeleccionado.movil || "N/R"}</p>
                                 </div>
-                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1 min-w-0">
                                     <p className="text-slate-400 font-semibold uppercase text-[0.65rem]">Correo Electrónico</p>
-                                    <p className="font-bold text-slate-800">{pacienteSeleccionado.correo_electronico || "N/R"}</p>
+                                    <p className="font-bold text-slate-800 break-words">{pacienteSeleccionado.correo_electronico || "N/R"}</p>
                                 </div>
-                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1 min-w-0">
                                     <p className="text-slate-400 font-semibold uppercase text-[0.65rem]">EPS</p>
-                                    <p className="font-bold text-blue-700">{pacienteSeleccionado.eps || "N/R"}</p>
+                                    <p className="font-bold text-blue-700 break-words">{pacienteSeleccionado.eps || "N/R"}</p>
                                 </div>
-                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1 min-w-0">
                                     <p className="text-slate-400 font-semibold uppercase text-[0.65rem]">ARL</p>
-                                    <p className="font-bold text-amber-700">{pacienteSeleccionado.arl || "N/R"}</p>
+                                    <p className="font-bold text-amber-700 break-words">{pacienteSeleccionado.arl || "N/R"}</p>
                                 </div>
-                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1 min-w-0">
                                     <p className="text-slate-400 font-semibold uppercase text-[0.65rem]">Fondo Pensión</p>
-                                    <p className="font-bold text-emerald-700">{pacienteSeleccionado.fondo_pension || "N/R"}</p>
+                                    <p className="font-bold text-emerald-700 break-words">{pacienteSeleccionado.fondo_pension || "N/R"}</p>
                                 </div>
-                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1 min-w-0">
                                     <p className="text-slate-400 font-semibold uppercase text-[0.65rem]">Residencia / Dirección</p>
-                                    <p className="font-bold text-slate-800">{pacienteSeleccionado.lugar_residencia || pacienteSeleccionado.direccion || "N/R"}</p>
+                                    <p className="font-bold text-slate-800 break-words">{pacienteSeleccionado.lugar_residencia || pacienteSeleccionado.direccion || "N/R"}</p>
                                 </div>
-                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1 min-w-0">
                                     <p className="text-slate-400 font-semibold uppercase text-[0.65rem]">Cargo a desempeñar</p>
-                                    <p className="font-bold text-purple-700">{pacienteSeleccionado.profesion || "N/R"}</p>
+                                    <p className="font-bold text-purple-700 break-words">{pacienteSeleccionado.profesion || "N/R"}</p>
                                 </div>
                                 {pacienteSeleccionado.firma_url && (
-                                    <div className="p-3 bg-white rounded-xl border border-emerald-200 space-y-1">
+                                    <div className="p-3 bg-white rounded-xl border border-emerald-200 space-y-1 min-w-0">
                                         <p className="text-emerald-500 font-semibold uppercase text-[0.65rem]">Firma capturada</p>
                                         <img src={pacienteSeleccionado.firma_url} alt="Firma del paciente" className="h-10 object-contain" />
                                     </div>
                                 )}
                             </div>
                         </div>
-                        <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-between items-center">
+                        <div className="p-4 border-t border-slate-200 bg-slate-50 flex flex-wrap justify-between items-center gap-2">
                             <Link
                                 href={`/dashboard/evaluaciones/nueva?paciente_id=${pacienteSeleccionado.id}`}
                                 className="btn-primary text-xs py-1.5"
                             >
                                 🩺 Crear Evaluación Médica
                             </Link>
-                            <div className="flex gap-2">
+                            <div className="flex flex-wrap gap-2">
                                 <Link href={`/dashboard/pacientes/${pacienteSeleccionado.id}/editar`} className="btn-secondary text-xs py-1.5">
                                     ✏️ Editar Paciente
                                 </Link>

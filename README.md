@@ -1,5 +1,16 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Envío de certificados por correo (Resend)
+
+El envío automático del certificado CMALAB al correo del paciente usa **Resend**.
+Para configurarlo (API Key, dominio verificado y verificación del flujo) siga la
+guía paso a paso en **[docs/ENVIAR-CERTIFICADOS-RESEND.md](docs/ENVIAR-CERTIFICADOS-RESEND.md)**.
+
+Resumen rápido: agregue `RESEND_API_KEY` (de https://resend.com/api-keys) y
+`EMAIL_FROM` con un dominio verificado en Resend a `.env.local` (ver `.env.example`),
+y reinicie el servidor. Sin `RESEND_API_KEY`, el botón "📧 Enviar" muestra el error
+de configuración pendiente.
+
 ## Getting Started
 
 First, run the development server:

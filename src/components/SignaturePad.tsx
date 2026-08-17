@@ -31,6 +31,56 @@ const GROSOR_MAX_PLUMILLA = 5.5;
 const PADDING_RECORTE = 6; // px lógicos de margen al recortar
 const ESCALA_SALIDA = 3; // firma 3x para que se vea nítida en el PDF
 
+// ── Retroalimentación al completar un trazo ───────────────────────────────
+// Vibración (móvil) + "tic" sutil con Web Audio (funciona también en
+// escritorio/tableta con lápiz). El sonido se dispara dentro del gesto del
+// usuario, así que no lo bloquea la política de autoplay del navegador.
+let audioCtx: AudioContext | null = null;
+
+const obtenerAudioCtx = (): AudioContext | null => {
+    if (typeof window === "undefined") return null;
+    if (!audioCtx) {
+        const Ctx =
+            window.AudioContext ||
+            (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!Ctx) return null;
+        try {
+            audioCtx = new Ctx();
+        } catch {
+            return null;
+        }
+    }
+    return audioCtx;
+};
+
+const tocarTic = () => {
+    try {
+        const ctx = obtenerAudioCtx();
+        if (!ctx) return;
+        if (ctx.state === "suspended") void ctx.resume();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = 1250;
+        gain.gain.setValueAtTime(0.06, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.05);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.05);
+    } catch {
+        // Si el navegador bloquea el audio, simplemente no suena.
+    }
+};
+
+const retroalimentacionTrazo = () => {
+    try {
+        navigator.vibrate?.(15);
+    } catch {
+        // Navegadores sin soporte de vibración: ignorar.
+    }
+    tocarTic();
+};
+
 const SignaturePad = forwardRef<SignaturePadRef>((_props, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const contenedorRef = useRef<HTMLDivElement>(null);
@@ -40,6 +90,7 @@ const SignaturePad = forwardRef<SignaturePadRef>((_props, ref) => {
     const ultimoPuntoRef = useRef<Punto | null>(null);
     const [dispositivo, setDispositivo] = useState<"mouse" | "lapiz" | "tactil" | null>(null);
     const [hayTrazo, setHayTrazo] = useState(false);
+    const [dibujando, setDibujando] = useState(false);
 
     const grosorParaPresion = (presion: number) =>
         GROSOR_MIN_PLUMILLA + (GROSOR_MAX_PLUMILLA - GROSOR_MIN_PLUMILLA) * Math.min(1, Math.max(0, presion));
@@ -48,10 +99,14 @@ const SignaturePad = forwardRef<SignaturePadRef>((_props, ref) => {
         const canvas = canvasRef.current;
         if (!canvas) return { x: 0, y: 0, g: GROSOR_MOUSE };
         const rect = canvas.getBoundingClientRect();
+        // Acotar a los límites del pad: si el lápiz se sale del área, el trazo
+        // continúa visible en el borde en vez de dibujar fuera de la vista.
+        const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+        const y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
         let g = GROSOR_MOUSE;
         if (e.pointerType === "pen") g = grosorParaPresion(e.pressure);
         else if (e.pointerType === "touch") g = GROSOR_TACTIL;
-        return { x: e.clientX - rect.left, y: e.clientY - rect.top, g };
+        return { x, y, g };
     };
 
     const pintarTrazado = useCallback((ctx: CanvasRenderingContext2D, puntos: Punto[]) => {
@@ -117,13 +172,49 @@ const SignaturePad = forwardRef<SignaturePadRef>((_props, ref) => {
         return () => ro.disconnect();
     }, [redibujar]);
 
+    // Mientras se dibuja (lápiz/dedo), bloquea el scroll de la página para que
+    // el gesto no desplace el documento aunque el puntero roce el borde del pad.
+    // Se usa un listener no-pasivo a nivel de window: `touch-action: none` en el
+    // canvas ya cubre el gesto que inicia sobre el pad; esto cubre además el que
+    // inicia sobre el borde/contenedor o cualquier imprevisto del driver del lápiz.
+    const prevenirScrollGlobal = useCallback((e: Event) => {
+        if (dibujandoRef.current) e.preventDefault();
+    }, []);
+
+    const bloquearScroll = useCallback(() => {
+        window.addEventListener("touchmove", prevenirScrollGlobal, { passive: false });
+        window.addEventListener("wheel", prevenirScrollGlobal, { passive: false });
+    }, [prevenirScrollGlobal]);
+
+    const desbloquearScroll = useCallback(() => {
+        window.removeEventListener("touchmove", prevenirScrollGlobal);
+        window.removeEventListener("wheel", prevenirScrollGlobal);
+    }, [prevenirScrollGlobal]);
+
+    // Limpieza por si el componente se desmonta a mitad de un trazo
+    useEffect(() => {
+        return () => {
+            window.removeEventListener("touchmove", prevenirScrollGlobal);
+            window.removeEventListener("wheel", prevenirScrollGlobal);
+        };
+    }, [prevenirScrollGlobal]);
+
     const alPulsar = (e: React.PointerEvent<HTMLCanvasElement>) => {
         e.preventDefault();
+        e.stopPropagation();
         dibujandoRef.current = true;
+        setDibujando(true);
         const p = puntoDesdeEvento(e);
         trazadoActualRef.current = [p];
         ultimoPuntoRef.current = p;
-        (e.target as HTMLCanvasElement).setPointerCapture?.(e.pointerId);
+        // Bloquear el scroll ANTES de capturar el puntero: si la captura falla
+        // (p. ej. puntero ya liberado), el bloqueo igualmente queda activo.
+        bloquearScroll();
+        try {
+            (e.target as HTMLCanvasElement).setPointerCapture?.(e.pointerId);
+        } catch {
+            // Captura opcional: el dibujo continúa aunque el navegador la rechace.
+        }
         if (e.pointerType === "pen") setDispositivo("lapiz");
         else if (e.pointerType === "touch") setDispositivo("tactil");
         else setDispositivo("mouse");
@@ -132,6 +223,7 @@ const SignaturePad = forwardRef<SignaturePadRef>((_props, ref) => {
     const alMover = (e: React.PointerEvent<HTMLCanvasElement>) => {
         if (!dibujandoRef.current) return;
         e.preventDefault();
+        e.stopPropagation();
         const canvas = canvasRef.current;
         const ctx = canvas?.getContext("2d");
         if (!canvas || !ctx) return;
@@ -156,16 +248,28 @@ const SignaturePad = forwardRef<SignaturePadRef>((_props, ref) => {
         ultimoPuntoRef.current = { x: mx, y: my, g: p.g };
     };
 
-    const alSoltar = () => {
+    const alSoltar = (e?: React.PointerEvent<HTMLCanvasElement>) => {
         if (!dibujandoRef.current) return;
         dibujandoRef.current = false;
+        setDibujando(false);
+        if (e) e.stopPropagation();
+        desbloquearScroll();
         if (trazadoActualRef.current.length > 0) {
             trazadosRef.current.push(trazadoActualRef.current);
             setHayTrazo(true);
+            // Confirmación sutil (sonido/vibración) al terminar cada trazo
+            retroalimentacionTrazo();
         }
         trazadoActualRef.current = [];
         ultimoPuntoRef.current = null;
         redibujar();
+    };
+
+    const alPerderCaptura = (e: React.PointerEvent<HTMLCanvasElement>) => {
+        // Si el navegador revoca la captura a mitad del trazo, terminar el trazo
+        // y liberar el bloqueo de scroll para no dejarlo activo.
+        if (!dibujandoRef.current) return;
+        alSoltar(e);
     };
 
     const clear = useCallback(() => {
@@ -173,9 +277,11 @@ const SignaturePad = forwardRef<SignaturePadRef>((_props, ref) => {
         trazadoActualRef.current = [];
         ultimoPuntoRef.current = null;
         dibujandoRef.current = false;
+        setDibujando(false);
         setHayTrazo(false);
+        desbloquearScroll();
         redibujar();
-    }, [redibujar]);
+    }, [redibujar, desbloquearScroll]);
 
     const deshacer = useCallback(() => {
         trazadosRef.current.pop();
@@ -225,19 +331,38 @@ const SignaturePad = forwardRef<SignaturePadRef>((_props, ref) => {
         <div>
             <div
                 ref={contenedorRef}
-                className="relative h-40 border-2 border-dashed border-slate-300 rounded-lg bg-slate-50 overflow-hidden select-none"
+                className="relative h-72 md:h-96 border-2 border-dashed border-slate-300 rounded-lg bg-slate-50 overflow-hidden select-none"
+                style={{ touchAction: "none", overscrollBehavior: "contain" }}
+                onDragStart={(e) => e.preventDefault()}
             >
                 <canvas
                     ref={canvasRef}
                     className="absolute inset-0 w-full h-full touch-none cursor-crosshair"
+                    style={{ touchAction: "none", overscrollBehavior: "contain" }}
                     onPointerDown={alPulsar}
                     onPointerMove={alMover}
                     onPointerUp={alSoltar}
                     onPointerCancel={alSoltar}
+                    onLostPointerCapture={alPerderCaptura}
+                    onContextMenu={(e) => e.preventDefault()}
                 />
-                {!hayTrazo && (
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <span className="text-xs text-slate-400 italic">Firme aquí con el mouse o su tableta gráfica</span>
+                {!hayTrazo && !dibujando && (
+                    <div
+                        className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                        aria-hidden="true"
+                    >
+                        <div className="relative w-[min(86%,32rem)] h-[58%] rounded-xl border-2 border-dashed border-slate-300/80 bg-slate-100/50">
+                            <div className="absolute inset-x-6 top-4 text-center">
+                                <span className="text-xs text-slate-400 italic">
+                                    ✍️ Firme aquí — el área es exclusiva para su firma
+                                </span>
+                            </div>
+                            {/* Línea guía sobre la que se firma */}
+                            <div className="absolute left-[8%] right-[8%] bottom-[18%] border-t-2 border-slate-400/80" />
+                            <span className="absolute inset-x-0 bottom-[calc(18%+8px)] text-center text-[0.65rem] font-semibold text-slate-500">
+                                Firma del trabajador
+                            </span>
+                        </div>
                     </div>
                 )}
             </div>

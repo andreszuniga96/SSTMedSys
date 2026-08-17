@@ -312,7 +312,7 @@ export default function ReportesPage() {
                                 <div key={ev.id} className="flex justify-between items-center gap-2 text-xs">
                                     <div className="min-w-0">
                                         <p className="font-semibold text-slate-700 truncate">{ev.paciente?.nombre_completo || "Trabajador"}</p>
-                                        <p className="text-[0.65rem] text-slate-400">Vence: {fechaVencimientoDe(ev)}</p>
+                                        <p className="text-[0.65rem] text-slate-400">Vence: {fechaVencimientoDe(ev.fecha_actual, ev.vigencia_meses)}</p>
                                     </div>
                                     <span className="text-red-500 font-bold shrink-0">hace {ev.diasVencido} días</span>
                                 </div>
@@ -337,7 +337,7 @@ export default function ReportesPage() {
                                 <div key={ev.id} className="flex justify-between items-center gap-2 text-xs">
                                     <div className="min-w-0">
                                         <p className="font-semibold text-slate-700 truncate">{ev.paciente?.nombre_completo || "Trabajador"}</p>
-                                        <p className="text-[0.65rem] text-slate-400">Vence: {fechaVencimientoDe(ev)}</p>
+                                        <p className="text-[0.65rem] text-slate-400">Vence: {fechaVencimientoDe(ev.fecha_actual, ev.vigencia_meses)}</p>
                                     </div>
                                     <span className="text-amber-600 font-bold shrink-0">{ev.diasRestantes === 0 ? "Vence HOY" : `vence en ${ev.diasRestantes} días`}</span>
                                 </div>

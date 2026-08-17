@@ -35,6 +35,7 @@ const tipoStyle = (tipo: string) => {
 
 export default function EvaluacionesTabs({ evaluaciones, certificados, pacientes, contextos, osteomusculares, historias }: EvaluacionesTabsProps) {
     const [tab, setTab] = useState<TabId>("presencial");
+    const [busqueda, setBusqueda] = useState("");
 
     const certMap = useMemo(() => new Map((certificados || []).map((c) => [c.evaluacion_id, c])), [certificados]);
     const pacMap = useMemo(() => new Map((pacientes || []).map((p) => [p.id, p])), [pacientes]);
@@ -44,7 +45,19 @@ export default function EvaluacionesTabs({ evaluaciones, certificados, pacientes
 
     const presenciales = (evaluaciones || []).filter((e) => !esVirtual(e));
     const virtuales = (evaluaciones || []).filter((e) => esVirtual(e));
-    const listadoActual = tab === "presencial" ? presenciales : virtuales;
+    const baseList = tab === "presencial" ? presenciales : virtuales;
+
+    const listadoActual = useMemo(() => {
+        if (!busqueda.trim() || busqueda.length < 2) return baseList;
+        const q = busqueda.toLowerCase();
+        return baseList.filter((ev) => {
+            const paciente = pacMap.get(ev.paciente_id);
+            return (
+                paciente?.nombre_completo?.toLowerCase().includes(q) ||
+                paciente?.documento_identidad?.toLowerCase().includes(q)
+            );
+        });
+    }, [baseList, busqueda, pacMap]);
 
     const tabs: { id: TabId; label: string; count: number; desc: string }[] = [
         { id: "presencial", label: "Pacientes Presenciales", count: presenciales.length, desc: "Evaluaciones realizadas en consultorio" },
@@ -79,7 +92,9 @@ export default function EvaluacionesTabs({ evaluaciones, certificados, pacientes
                 </td>
                 <td>
                     <div className="font-bold text-slate-900">
-                        {paciente.nombre_completo || "Paciente sin nombre"}
+                        <Link href={`/dashboard/pacientes/${paciente.id}`} className="hover:text-teal-700 transition-colors">
+                            {paciente.nombre_completo || "Paciente sin nombre"}
+                        </Link>
                     </div>
                     <div className="text-xs text-slate-500">
                         {paciente.tipo_documento || 'CC'} {paciente.documento_identidad}
@@ -202,6 +217,33 @@ export default function EvaluacionesTabs({ evaluaciones, certificados, pacientes
                                 {listadoActual.length} evaluación(es) · {tab === "virtual" ? "Pacientes que diligenciaron el portal pre-atención" : "Pacientes atendidos en consultorio"}
                             </p>
                         </div>
+                    </div>
+                    <div className="px-4 py-3 border-b border-slate-100">
+                        <div className="relative max-w-sm">
+                            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                            <input
+                                type="text"
+                                placeholder="Buscar por nombre o documento..."
+                                className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-xl bg-white focus:border-teal-400 focus:ring-2 focus:ring-teal-400/20 outline-none transition-all"
+                                value={busqueda}
+                                onChange={(e) => setBusqueda(e.target.value)}
+                            />
+                            {busqueda && (
+                                <button
+                                    onClick={() => setBusqueda("")}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                >
+                                    ×
+                                </button>
+                            )}
+                        </div>
+                        {busqueda.length >= 2 && (
+                            <p className="text-xs text-slate-500 mt-1.5">
+                                {listadoActual.length} resultado(s) para &ldquo;{busqueda}&rdquo;
+                            </p>
+                        )}
                     </div>
                 </div>
                 <div className="overflow-x-auto">

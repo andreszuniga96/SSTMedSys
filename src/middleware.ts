@@ -61,7 +61,8 @@ export async function middleware(request: NextRequest) {
     const isPublicRoute =
         request.nextUrl.pathname.startsWith('/login') ||
         request.nextUrl.pathname.startsWith('/pre-atencion') ||
-        request.nextUrl.pathname.startsWith('/ver-examen')
+        request.nextUrl.pathname.startsWith('/ver-examen') ||
+        request.nextUrl.pathname.startsWith('/test-fixes')
 
     // Proteger rutas: Si no hay usuario y no está en una ruta pública, redirigir a /login
     if (!user && !isPublicRoute) {

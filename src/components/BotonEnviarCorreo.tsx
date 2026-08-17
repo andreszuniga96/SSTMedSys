@@ -26,15 +26,31 @@ export default function BotonEnviarCorreo({ evaluacionId, correoPaciente, nombre
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ evaluacion_id: evaluacionId, correo_destino: correo.trim() }),
             });
-            const data = await res.json();
+
+            let data: { error?: string; message?: string; id?: string } = {};
+            try {
+                data = await res.json();
+            } catch {
+                // Respuesta no JSON (p. ej. error 500 del servidor): construir mensaje genérico
+                data = { error: res.ok ? undefined : `Error del servidor (HTTP ${res.status}). Intente de nuevo.` };
+            }
+
             if (!res.ok) {
-                throw new Error(data?.error || "Error al enviar");
+                const msg = data?.error || "Error al enviar el certificado.";
+                // Si falta la configuración de Resend, dar instrucciones claras y cortas
+                if (/RESEND_API_KEY/i.test(msg)) {
+                    throw new Error(
+                        "El envío de correos no está configurado (falta la llave de Resend). " +
+                        "Agregue RESEND_API_KEY en el archivo .env.local (local) o en Vercel → Project → Settings → Environment Variables, y reinicie el servidor."
+                    );
+                }
+                throw new Error(msg);
             }
             toast.success(data?.message || "Certificado enviado correctamente.");
             setOpen(false);
         } catch (err: any) {
             console.error(err);
-            toast.error(err?.message || "No se pudo enviar el certificado.");
+            toast.error(err?.message || "No se pudo enviar el certificado. Revise la conexión e intente de nuevo.");
         } finally {
             setEnviando(false);
         }

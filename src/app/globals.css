@@ -132,8 +132,12 @@ body {
    ============================================================ */
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  /* Solo opacidad a propósito: un `transform` persistente (aunque sea
+     translateY(0)) crea un stacking context en cada sección animada y hace
+     que los dropdowns absolutos (Diccionario de Restricciones, CIE-10)
+     queden pintados DEBAJO de la sección siguiente, cortándose en el borde. */
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes slideInLeft {
@@ -381,7 +385,10 @@ body {
   background: var(--surface-card);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-xl);
-  overflow: hidden;
+  /* Sin overflow:hidden en la base: recortaba los dropdowns absolutos
+     (CIE-10 y Diccionario de Restricciones) dentro de la sección.
+     Las secciones que necesitan recortar lo declaran explícito con la
+     clase overflow-hidden (p. ej. contenedores de tablas). */
   box-shadow: var(--shadow-sm);
 }
 
@@ -391,6 +398,8 @@ body {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  /* Mantiene las esquinas superiores redondeadas del degradado sin recortar hijos */
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
 }
 
 .section-header-blue {
@@ -485,41 +494,45 @@ body {
   flex-shrink: 0;
 }
 
-/* Modal Overlay */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgb(15 23 42 / 0.6);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 50;
-  animation: fadeIn 0.2s ease-out;
+/* Modal Overlay.
+   Estilos declarados en @layer components para que las utilidades de Tailwind
+   (p. ej. max-w-md / max-w-2xl / max-w-3xl de cada modal) puedan sobrescribirlos.
+   Sin la capa, .modal-content ganaba y todos los modales quedaban a 40rem. */
+@layer components {
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgb(15 23 42 / 0.6);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    animation: fadeIn 0.2s ease-out;
+  }
+
+  .modal-content {
+    background: var(--surface-card);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-xl);
+    width: 100%;
+    max-width: 40rem;
+    max-height: 90vh;
+    overflow-y: auto;
+    animation: scaleIn 0.25s ease-out;
+  }
 }
 
-.modal-content {
-  background: var(--surface-card);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-xl);
-  width: 100%;
-  max-width: 40rem;
-  max-height: 90vh;
-  overflow-y: auto;
-  animation: scaleIn 0.25s ease-out;
-}
-
-/* CIE-10 Autocomplete */
+/* CIE-10 Autocomplete.
+   La posición (arriba/abajo) la decide el componente según el espacio en
+   pantalla; aquí solo se definen bordes/scroll/z-index. */
 .cie10-dropdown {
   position: absolute;
-  top: 100%;
   left: 0;
   right: 0;
   background: var(--surface-card);
   border: 1.5px solid var(--border-light);
-  border-top: none;
-  border-radius: 0 0 var(--radius-md) var(--radius-md);
-  max-height: 16rem;
+  border-radius: var(--radius-md);
   overflow-y: auto;
   z-index: 20;
   box-shadow: var(--shadow-lg);

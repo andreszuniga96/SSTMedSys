@@ -333,7 +333,7 @@ export default function AgendaPage() {
                             </div>
                         ) : (
                             citasDelDia.map((c: any) => (
-                                <div key={c.id} className="p-4">
+                                <div key={c.id} className="p-4 hover:bg-slate-50 transition-colors">
                                     <div className="flex items-center justify-between gap-2">
                                         <div className="flex items-center gap-2">
                                             <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold">
@@ -349,18 +349,34 @@ export default function AgendaPage() {
                                             </svg>
                                         </button>
                                     </div>
-                                    <p className="font-bold text-slate-900 text-sm mt-2">{c.paciente?.nombre_completo}</p>
+                                    <div className="flex items-center gap-2 mt-2">
+                                        <p className="font-bold text-slate-900 text-sm">{c.paciente?.nombre_completo}</p>
+                                        {c.paciente_id && (
+                                            <Link
+                                                href={`/dashboard/pacientes/${c.paciente_id}`}
+                                                className="text-[0.65rem] text-teal-600 font-semibold hover:underline shrink-0"
+                                            >
+                                                Ver perfil →
+                                            </Link>
+                                        )}
+                                    </div>
                                     <p className="text-xs text-slate-500">
                                         {c.tipo_evaluacion} · {c.modalidad} · CC {c.paciente?.documento_identidad}
                                     </p>
                                     {c.notas && <p className="text-xs text-slate-400 mt-1 italic">{c.notas}</p>}
                                     {c.estado !== "realizada" && c.estado !== "cancelada" && (
                                         <div className="flex gap-2 mt-3">
+                                            <Link
+                                                href={`/dashboard/evaluaciones/nueva?paciente_id=${c.paciente_id}&tipo=${encodeURIComponent(c.tipo_evaluacion || "Pre ingreso")}`}
+                                                className="flex-1 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-lg transition-colors text-center"
+                                            >
+                                                🏥 Iniciar Evaluación
+                                            </Link>
                                             <button
                                                 onClick={() => cambiarEstado(c, "realizada")}
-                                                className="flex-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-colors"
+                                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-colors"
                                             >
-                                                Marcar realizada
+                                                ✓ Realizada
                                             </button>
                                             <button
                                                 onClick={() => cambiarEstado(c, "cancelada")}

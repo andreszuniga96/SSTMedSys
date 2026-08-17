@@ -32,7 +32,10 @@ export default function DiagnosticoCIE10Input({ seleccionados, onChange }: Diagn
     const [focusIndex, setFocusIndex] = useState(-1);
     const inputRef = useRef<HTMLInputElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const inputWrapRef = useRef<HTMLDivElement>(null);
     const debounceRef = useRef<NodeJS.Timeout | null>(null);
+    const [dropdownUp, setDropdownUp] = useState(false);
+    const [dropdownMaxH, setDropdownMaxH] = useState<number>(256);
 
     const handleSearch = useCallback((value: string) => {
         setQuery(value);
@@ -92,6 +95,20 @@ export default function DiagnosticoCIE10Input({ seleccionados, onChange }: Diagn
         return () => document.removeEventListener("mousedown", handleClick);
     }, []);
 
+    // Posiciona el dropdown dentro del viewport: si no cabe hacia abajo,
+    // lo abre hacia arriba y limita su alto (antes quedaba cortado o fuera de pantalla).
+    useEffect(() => {
+        if (!showDropdown) return;
+        const el = inputWrapRef.current;
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        const espacioAbajo = window.innerHeight - rect.bottom - 8;
+        const espacioArriba = rect.top - 8;
+        const haciaArriba = espacioAbajo < 200 && espacioArriba > espacioAbajo;
+        setDropdownUp(haciaArriba);
+        setDropdownMaxH(Math.max(120, Math.min(256, haciaArriba ? espacioArriba : espacioAbajo)));
+    }, [showDropdown]);
+
     return (
         <div ref={containerRef} className="relative">
             {/* Selected chips */}
@@ -115,7 +132,7 @@ export default function DiagnosticoCIE10Input({ seleccionados, onChange }: Diagn
             )}
 
             {/* Search input */}
-            <div className="relative">
+            <div ref={inputWrapRef} className="relative">
                 <div className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }}>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -137,7 +154,10 @@ export default function DiagnosticoCIE10Input({ seleccionados, onChange }: Diagn
 
             {/* Dropdown */}
             {showDropdown && (
-                <div className="cie10-dropdown animate-fade-in">
+                <div
+                    className={`cie10-dropdown animate-fade-in ${dropdownUp ? "bottom-full mb-1" : "top-full mt-1"}`}
+                    style={{ maxHeight: dropdownMaxH }}
+                >
                     {resultados.map((d, i) => (
                         <div
                             key={d.codigo}

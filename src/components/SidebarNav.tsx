@@ -96,6 +96,14 @@ export function SidebarNav({ userEmail }: { userEmail: string }) {
 
     const initials = userEmail ? userEmail.substring(0, 2).toUpperCase() : "DR";
 
+    // Extraer nombre visible del email: "viviana@dominio.com" → "Viviana"
+    const nombreMostrar = userEmail
+        ? userEmail.split("@")[0]
+            .replace(/[._-]/g, " ")
+            .replace(/\b\w/g, (c) => c.toUpperCase())
+            .trim()
+        : "Usuario";
+
     return (
         <>
             {/* Mobile Header */}
@@ -200,7 +208,7 @@ export function SidebarNav({ userEmail }: { userEmail: string }) {
                         </div>
                         {!collapsed && (
                             <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-white truncate">Dra. Viviana Quiróz</div>
+                                <div className="text-sm font-medium text-white truncate">{nombreMostrar}</div>
                                 <div className="text-[0.65rem] text-slate-400 truncate">{userEmail}</div>
                             </div>
                         )}

@@ -127,12 +127,15 @@ export async function POST(req: Request) {
             return NextResponse.json(
                 {
                     error:
-                        "El envío de correos no está configurado. Agregue la variable RESEND_API_KEY en Vercel (https://resend.com) para habilitar el envío automático del certificado.",
+                        "El envío de correos no está configurado: falta RESEND_API_KEY. En Vercel (Project → Settings → Environment Variables) agregue RESEND_API_KEY con una API Key de https://resend.com/api-keys y, si lo desea, EMAIL_FROM (p. ej. \"SST MedSys <no-responder@tudominio.com>\"). Luego redepliegue.",
                 },
                 { status: 503 }
             );
         }
 
+        // Nota: el dominio por defecto onboarding@resend.dev solo permite enviar a la
+        // propia cuenta verificada de Resend; para enviar a los pacientes configure un
+        // dominio propio en Resend (Settings → Domains) y úselo en EMAIL_FROM.
         const from = process.env.EMAIL_FROM || "SST MedSys <onboarding@resend.dev>";
         const nombrePaciente = paciente.nombre_completo || "Paciente";
         const linkVerificacion = `${PUBLIC_APP_URL}/ver-examen/${evaluacionId}`;
@@ -174,31 +177,55 @@ export async function POST(req: Request) {
 
         const nombreArchivoAdjunto = nombreArchivo || `CMALAB_${(paciente.documento_identidad || "paciente").replace(/[^a-zA-Z0-9]/g, "")}.pdf`;
 
-        const resendRes = await fetch("https://api.resend.com/emails", {
-            method: "POST",
-            headers: {
-                Authorization: `Bearer ${apiKey}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                from,
-                to: [email],
-                subject: `Su certificado médico ocupacional — ${concepto}`,
-                html,                    attachments: [
-                    {
-                        filename: nombreArchivoAdjunto,
-                        content: pdfBuffer.toString("base64"),
-                    },
-                ],
-            }),
-        });
+        let resendRes: Response;
+        try {
+            resendRes = await fetch("https://api.resend.com/emails", {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${apiKey}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    from,
+                    to: [email],
+                    subject: `Su certificado médico ocupacional — ${concepto}`,
+                    html,
+                    attachments: [
+                        {
+                            filename: nombreArchivoAdjunto,
+                            content: pdfBuffer.toString("base64"),
+                        },
+                    ],
+                }),
+                signal: AbortSignal.timeout(20000),
+            });
+        } catch (netErr) {
+            console.error("Error de red llamando a Resend:", netErr);
+            return NextResponse.json(
+                {
+                    error:
+                        "No se pudo contactar el servicio de correo (Resend). Revise la conexión a internet e intente de nuevo.",
+                },
+                { status: 502 }
+            );
+        }
 
         const resendBody = await resendRes.json().catch(() => ({}));
 
         if (!resendRes.ok) {
             console.error("Error enviando correo (Resend):", resendBody);
+            const msg: string = resendBody?.message || "error desconocido";
+            // Error típico cuando EMAIL_FROM usa un dominio aún no verificado en Resend
+            if (/domain|from address|sender|not verified/i.test(msg) || resendBody?.statusCode === 403) {
+                return NextResponse.json(
+                    {
+                        error: `No fue posible enviar el correo: ${msg}. Verifique que el dominio de EMAIL_FROM esté verificado en Resend (Settings → Domains) y que el remitente use ese dominio.`,
+                    },
+                    { status: 502 }
+                );
+            }
             return NextResponse.json(
-                { error: `No fue posible enviar el correo: ${resendBody?.message || "error desconocido"}` },
+                { error: `No fue posible enviar el correo: ${msg}` },
                 { status: 502 }
             );
         }
