@@ -285,6 +285,13 @@ export default function NuevaEvaluacion() {
         e.preventDefault();
         if (!formData.paciente_id) return toast.error("Seleccione un paciente.");
 
+        // Validación obligatoria: debe haber al menos un diagnóstico CIE-10
+        if (diagnosticosCIE10.length === 0) {
+            toast.error("⚠️ Debe agregar al menos un Diagnóstico CIE-10 antes de guardar. Vaya al Paso 6.");
+            setPaso(6);
+            return;
+        }
+
         let signatureBase64: string | null = null;
         if (modoFirma === "pad") {
             signatureBase64 = signatureRef.current?.getSignature() || null;
@@ -1362,6 +1369,15 @@ export default function NuevaEvaluacion() {
                             <div className="section-header section-header-blue">
                                 <span className="text-lg">🏷️</span>
                                 <h3 className="text-sm font-bold text-blue-900">Diagnósticos CIE-10</h3>
+                                {diagnosticosCIE10.length === 0 ? (
+                                    <span className="ml-auto px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 animate-pulse">
+                                        ⚠️ Obligatorio — agregue al menos 1
+                                    </span>
+                                ) : (
+                                    <span className="ml-auto px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
+                                        ✅ {diagnosticosCIE10.length} diagnóstico(s) agregado(s)
+                                    </span>
+                                )}
                             </div>
                             <div className="section-body">
                                 <DiagnosticoCIE10Input seleccionados={diagnosticosCIE10} onChange={setDiagnosticosCIE10} />

@@ -121,6 +121,13 @@ export default function EvaluacionesTabs({ evaluaciones, certificados, pacientes
                             nombrePaciente={paciente.nombre_completo}
                         />
                         <Link
+                            href={`/dashboard/evaluaciones/${evaluacion.id}/editar`}
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1"
+                            title="Editar evaluación y actualizar certificado"
+                        >
+                            ✏️ Editar
+                        </Link>
+                        <Link
                             href={`/ver-examen/${evaluacion.id}`}
                             target="_blank"
                             className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg text-xs font-semibold transition-colors"
