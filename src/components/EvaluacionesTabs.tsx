@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import BotonDescargaPDF from "@/components/pdf/BotonDescargaPDF";
-import BotonEnviarCorreo from "@/components/BotonEnviarCorreo";
+import BotonEnviarWhatsApp from "@/components/BotonEnviarWhatsApp";
 import { construirDatosCertificado, type DatosCertificadoInput } from "@/lib/certificado-data";
 import ConceptoBadge from "@/components/dashboard/ConceptoBadge";
 
@@ -115,9 +115,9 @@ export default function EvaluacionesTabs({ evaluaciones, certificados, pacientes
                 </td>
                 <td className="text-right">
                     <div className="flex justify-end items-center gap-2">
-                        <BotonEnviarCorreo
+                        <BotonEnviarWhatsApp
                             evaluacionId={evaluacion.id}
-                            correoPaciente={paciente.correo_electronico}
+                            telefonoPaciente={paciente.movil || paciente.telefono_fijo || null}
                             nombrePaciente={paciente.nombre_completo}
                         />
                         <Link
